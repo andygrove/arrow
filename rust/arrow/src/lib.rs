@@ -15,6 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
+//! Apache Arrow is a cross-language development platform for in-memory data. It specifies a
+//! standardized language-independent columnar memory format for flat and hierarchical data,
+//! organized for efficient analytic operations on modern hardware.
+
 #![feature(type_ascription)]
 #![feature(rustc_private)]
 #![feature(specialization)]

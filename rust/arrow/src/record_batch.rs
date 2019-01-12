@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+//! The RecordBatch struct represents a batch of columnar data with schema meta-data
+
 use std::sync::Arc;
 
 use crate::array::*;

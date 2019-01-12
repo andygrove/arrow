@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+//! Internal functionality for allocating aligned memory buffers
+
 use libc;
 use std::cmp;
 use std::mem;
