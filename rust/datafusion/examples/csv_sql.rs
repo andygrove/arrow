@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::Arc;
 
 extern crate arrow;
@@ -26,7 +24,6 @@ use arrow::array::{BinaryArray, Float64Array};
 use arrow::datatypes::{DataType, Field, Schema};
 
 use datafusion::execution::context::ExecutionContext;
-use datafusion::execution::datasource::CsvDataSource;
 
 /// This example demonstrates executing a simple query against an Arrow data source and fetching results
 fn main() {

@@ -15,11 +15,23 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub mod aggregate;
-pub mod context;
-pub mod error;
-pub mod expression;
-pub mod filter;
-pub mod physicalplan;
-pub mod projection;
-pub mod relation;
+//! Data source traits
+
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::Arc;
+
+use arrow::datatypes::Schema;
+use arrow::record_batch::RecordBatch;
+
+use crate::execution::error::Result;
+
+pub trait DataSourceProvider {
+    fn schema(&self) -> &Arc<Schema>;
+    fn scan(&self, projection: &Option<Vec<usize>>) -> Rc<RefCell<DataSource>>;
+}
+
+pub trait DataSource {
+    fn schema(&self) -> &Arc<Schema>;
+    fn next(&mut self) -> Result<Option<RecordBatch>>;
+}

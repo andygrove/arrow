@@ -23,13 +23,13 @@ use std::sync::Arc;
 
 use arrow::datatypes::{Field, Schema};
 
+use super::super::datasource::{CsvProvider, DataSourceProvider};
 use super::super::dfparser::{DFASTNode, DFParser};
 use super::super::logicalplan::*;
 use super::super::optimizer::optimizer::OptimizerRule;
 use super::super::optimizer::projection_push_down::ProjectionPushDown;
 use super::super::sqlplanner::{SchemaProvider, SqlToRel};
 use super::aggregate::AggregateRelation;
-use super::datasource::{CsvProvider, DataSourceProvider};
 use super::error::{ExecutionError, Result};
 use super::expression::*;
 use super::filter::FilterRelation;

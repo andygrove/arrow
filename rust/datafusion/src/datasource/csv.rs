@@ -27,11 +27,40 @@ use arrow::csv;
 use arrow::datatypes::{Field, Schema};
 use arrow::record_batch::RecordBatch;
 
-use super::error::Result;
+use crate::datasource::{DataSource, DataSourceProvider};
+use crate::execution::error::Result;
 
-pub trait DataSource {
-    fn schema(&self) -> &Arc<Schema>;
-    fn next(&mut self) -> Result<Option<RecordBatch>>;
+/// Represents a CSV file with a provided schema
+pub struct CsvProvider {
+    filename: String,
+    schema: Arc<Schema>,
+    has_header: bool,
+}
+
+impl CsvProvider {
+    pub fn new(filename: &str, schema: &Schema, has_header: bool) -> Self {
+        Self {
+            filename: String::from(filename),
+            schema: Arc::new(schema.clone()),
+            has_header,
+        }
+    }
+}
+
+impl DataSourceProvider for CsvProvider {
+    fn schema(&self) -> &Arc<Schema> {
+        &self.schema
+    }
+
+    fn scan(&self, projection: &Option<Vec<usize>>) -> Rc<RefCell<DataSource>> {
+        Rc::new(RefCell::new(CsvDataSource::new(
+            &self.filename,
+            self.schema.clone(),
+            self.has_header,
+            projection,
+            1024 * 1024,
+        )))
+    }
 }
 
 /// CSV data source
@@ -81,43 +110,5 @@ impl DataSource for CsvDataSource {
 
     fn next(&mut self) -> Result<Option<RecordBatch>> {
         Ok(self.reader.next()?)
-    }
-}
-
-pub trait DataSourceProvider {
-    fn schema(&self) -> &Arc<Schema>;
-    fn scan(&self, projection: &Option<Vec<usize>>) -> Rc<RefCell<DataSource>>;
-}
-
-/// Represents a CSV file with a provided schema
-pub struct CsvProvider {
-    filename: String,
-    schema: Arc<Schema>,
-    has_header: bool,
-}
-
-impl CsvProvider {
-    pub fn new(filename: &str, schema: &Schema, has_header: bool) -> Self {
-        Self {
-            filename: String::from(filename),
-            schema: Arc::new(schema.clone()),
-            has_header,
-        }
-    }
-}
-
-impl DataSourceProvider for CsvProvider {
-    fn schema(&self) -> &Arc<Schema> {
-        &self.schema
-    }
-
-    fn scan(&self, projection: &Option<Vec<usize>>) -> Rc<RefCell<DataSource>> {
-        Rc::new(RefCell::new(CsvDataSource::new(
-            &self.filename,
-            self.schema.clone(),
-            self.has_header,
-            projection,
-            1024 * 1024,
-        )))
     }
 }

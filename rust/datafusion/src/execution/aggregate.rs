@@ -1011,9 +1011,9 @@ impl AggregateRelation {
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::datasource::CsvDataSource;
     use super::super::super::logicalplan::Expr;
     use super::super::context::ExecutionContext;
-    use super::super::datasource::CsvDataSource;
     use super::super::expression;
     use super::super::relation::DataSourceRelation;
     use super::*;

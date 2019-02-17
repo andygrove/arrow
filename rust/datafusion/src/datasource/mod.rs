@@ -15,11 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub mod aggregate;
-pub mod context;
-pub mod error;
-pub mod expression;
-pub mod filter;
-pub mod physicalplan;
-pub mod projection;
-pub mod relation;
+pub mod csv;
+pub mod datasource;
+
+pub use self::csv::CsvDataSource;
+pub use self::csv::CsvProvider;
+pub use self::datasource::DataSource;
+pub use self::datasource::DataSourceProvider;

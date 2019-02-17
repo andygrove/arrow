@@ -24,6 +24,7 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate sqlparser;
 
+pub mod datasource;
 pub mod dfparser;
 pub mod execution;
 pub mod logicalplan;

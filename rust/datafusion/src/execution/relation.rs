@@ -22,8 +22,8 @@ use std::sync::Arc;
 use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;
 
-use super::datasource::DataSource;
 use super::error::Result;
+use crate::datasource::DataSource;
 
 /// trait for all relations (a relation is essentially just an iterator over rows with
 /// a known schema)
