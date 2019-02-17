@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Data sources
+//! CSV data source
 
 use std::cell::RefCell;
 use std::fs::File;

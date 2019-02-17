@@ -62,10 +62,8 @@ impl ExecutionContext {
 
                 // plan the query (create a logical relational plan)
                 let plan = query_planner.sql_to_rel(&ansi)?;
-                println!("Logical plan: {:?}", plan);
 
                 let optimized_plan = self.optimize(&plan);
-                println!("Optimized plan: {:?}", optimized_plan);
 
                 let relation = self.execute(&optimized_plan)?;
 
