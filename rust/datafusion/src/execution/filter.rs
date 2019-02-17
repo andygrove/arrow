@@ -50,7 +50,7 @@ impl FilterRelation {
 }
 
 impl Relation for FilterRelation {
-    fn next(&mut self) -> Result<Option<RecordBatch>> {
+    fn next(&mut self) -> Result<Option<Rc<RecordBatch>>> {
         match self.input.borrow_mut().next()? {
             Some(batch) => {
                 // evaluate the filter expression against the batch
@@ -69,7 +69,7 @@ impl Relation for FilterRelation {
                             filtered_columns?,
                         );
 
-                        Ok(Some(filtered_batch))
+                        Ok(Some(Rc::new(filtered_batch)))
                     }
                     _ => Err(ExecutionError::ExecutionError(
                         "Filter expression did not evaluate to boolean".to_string(),

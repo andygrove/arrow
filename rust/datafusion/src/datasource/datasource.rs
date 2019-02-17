@@ -33,5 +33,5 @@ pub trait DataSourceProvider {
 
 pub trait DataSource {
     fn schema(&self) -> &Arc<Schema>;
-    fn next(&mut self) -> Result<Option<RecordBatch>>;
+    fn next(&mut self) -> Result<Option<Rc<RecordBatch>>>;
 }

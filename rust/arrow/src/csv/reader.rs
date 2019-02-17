@@ -44,6 +44,7 @@ use lazy_static::lazy_static;
 use regex::{Regex, RegexBuilder};
 use std::collections::HashSet;
 use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use csv as csv_crate;
@@ -239,7 +240,7 @@ impl<R: Read> Reader<R> {
     }
 
     /// Read the next batch of rows
-    pub fn next(&mut self) -> Result<Option<RecordBatch>> {
+    pub fn next(&mut self) -> Result<Option<Rc<RecordBatch>>> {
         // read a batch of rows into memory
         let mut rows: Vec<StringRecord> = Vec::with_capacity(self.batch_size);
         for _ in 0..self.batch_size {
@@ -329,7 +330,7 @@ impl<R: Read> Reader<R> {
         let projected_schema = Arc::new(Schema::new(projected_fields));
 
         match arrays {
-            Ok(arr) => Ok(Some(RecordBatch::new(projected_schema, arr))),
+            Ok(arr) => Ok(Some(Rc::new(RecordBatch::new(projected_schema, arr)))),
             Err(e) => Err(e),
         }
     }

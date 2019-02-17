@@ -628,7 +628,7 @@ fn update_accumulators(
 }
 
 impl Relation for AggregateRelation {
-    fn next(&mut self) -> Result<Option<RecordBatch>> {
+    fn next(&mut self) -> Result<Option<Rc<RecordBatch>>> {
         if self.end_of_results {
             Ok(None)
         } else {
@@ -716,7 +716,7 @@ macro_rules! aggr_array_from_map_entries {
 
 impl AggregateRelation {
     /// perform simple aggregate on entire columns without grouping logic
-    fn without_group_by(&mut self) -> Result<Option<RecordBatch>> {
+    fn without_group_by(&mut self) -> Result<Option<Rc<RecordBatch>>> {
         let aggr_expr_count = self.aggr_expr.len();
         let mut accumulator_set = create_accumulators(&self.aggr_expr)?;
 
@@ -799,10 +799,13 @@ impl AggregateRelation {
             }
         }
 
-        Ok(Some(RecordBatch::new(self.schema.clone(), result_columns)))
+        Ok(Some(Rc::new(RecordBatch::new(
+            self.schema.clone(),
+            result_columns,
+        ))))
     }
 
-    fn with_group_by(&mut self) -> Result<Option<RecordBatch>> {
+    fn with_group_by(&mut self) -> Result<Option<Rc<RecordBatch>>> {
         //NOTE this whole method is currently very inefficient with too many per-row operations
         // involving pattern matching and downcasting ... I'm sure this can be re-implemented in
         // a much more efficient way that takes better advantage of Arrow
@@ -1005,7 +1008,10 @@ impl AggregateRelation {
             result_arrays.push(array?);
         }
 
-        Ok(Some(RecordBatch::new(self.schema.clone(), result_arrays)))
+        Ok(Some(Rc::new(RecordBatch::new(
+            self.schema.clone(),
+            result_arrays,
+        ))))
     }
 }
 

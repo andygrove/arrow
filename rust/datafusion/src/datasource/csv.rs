@@ -108,7 +108,7 @@ impl DataSource for CsvDataSource {
         &self.schema
     }
 
-    fn next(&mut self) -> Result<Option<RecordBatch>> {
+    fn next(&mut self) -> Result<Option<Rc<RecordBatch>>> {
         Ok(self.reader.next()?)
     }
 }

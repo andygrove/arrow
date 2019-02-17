@@ -50,7 +50,7 @@ impl ProjectRelation {
 }
 
 impl Relation for ProjectRelation {
-    fn next(&mut self) -> Result<Option<RecordBatch>> {
+    fn next(&mut self) -> Result<Option<Rc<RecordBatch>>> {
         match self.input.borrow_mut().next()? {
             Some(batch) => {
                 let projected_columns: Result<Vec<ArrayRef>> =
@@ -66,7 +66,7 @@ impl Relation for ProjectRelation {
                 let projected_batch: RecordBatch =
                     RecordBatch::new(Arc::new(schema), projected_columns?);
 
-                Ok(Some(projected_batch))
+                Ok(Some(Rc::new(projected_batch)))
             }
             None => Ok(None),
         }

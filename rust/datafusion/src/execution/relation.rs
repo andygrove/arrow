@@ -28,7 +28,7 @@ use crate::datasource::DataSource;
 /// trait for all relations (a relation is essentially just an iterator over rows with
 /// a known schema)
 pub trait Relation {
-    fn next(&mut self) -> Result<Option<RecordBatch>>;
+    fn next(&mut self) -> Result<Option<Rc<RecordBatch>>>;
 
     /// get the schema for this relation
     fn schema(&self) -> &Arc<Schema>;
@@ -47,7 +47,7 @@ impl DataSourceRelation {
 }
 
 impl Relation for DataSourceRelation {
-    fn next(&mut self) -> Result<Option<RecordBatch>> {
+    fn next(&mut self) -> Result<Option<Rc<RecordBatch>>> {
         self.ds.borrow_mut().next()
     }
 

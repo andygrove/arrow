@@ -73,6 +73,7 @@ impl ExecutionContext {
         }
     }
 
+    /// Register a CSV file so that it can be queried as a table
     pub fn register_csv(
         &mut self,
         name: &str,
@@ -80,10 +81,17 @@ impl ExecutionContext {
         schema: &Schema,
         has_header: bool,
     ) {
-        self.datasources.borrow_mut().insert(
-            name.to_string(),
+        self.register_provider(
+            name,
             Rc::new(CsvProvider::new(filename, schema, has_header)),
         );
+    }
+
+    /// Register a custom data source provider
+    pub fn register_provider(&mut self, name: &str, provider: Rc<DataSourceProvider>) {
+        self.datasources
+            .borrow_mut()
+            .insert(name.to_string(), provider);
     }
 
     fn optimize(&self, plan: &LogicalPlan) -> Rc<LogicalPlan> {
