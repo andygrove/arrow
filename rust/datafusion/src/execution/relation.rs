@@ -29,9 +29,7 @@ use crate::error::Result;
 
 /// trait for all relations (a relation is essentially just an iterator over batches
 /// of data, with a known schema)
-pub trait Relation {
-    /// Get the next `RecordBatch`, or `None` if the iterator is exhausted
-    fn next(&mut self) -> Result<Option<RecordBatch>>;
+pub trait Relation : Iterator<Item=Result<RecordBatch>> {
 
     /// get the schema for this relation
     fn schema(&self) -> &Arc<Schema>;
@@ -50,12 +48,21 @@ impl DataSourceRelation {
     }
 }
 
-impl Relation for DataSourceRelation {
-    fn next(&mut self) -> Result<Option<RecordBatch>> {
-        self.ds.lock().unwrap().next()
-    }
+impl Iterator for DataSourceRelation {
+    type Item = Result<RecordBatch>;
 
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.ds.lock().unwrap().next() {
+            Ok(Some(batch)) => Some(Ok(batch)),
+            Ok(None) => None,
+            Err(e) => Err(e)
+        }
+    }
+}
+
+impl Relation for DataSourceRelation {
     fn schema(&self) -> &Arc<Schema> {
         &self.schema
     }
+
 }

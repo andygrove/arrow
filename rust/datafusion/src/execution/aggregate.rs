@@ -635,20 +635,31 @@ fn update_accumulators(
     Ok(())
 }
 
-impl Relation for AggregateRelation {
-    fn next(&mut self) -> Result<Option<RecordBatch>> {
+impl Iterator for AggregateRelation {
+    type Item = Result<RecordBatch>;
+
+    fn next(&mut self) -> Option<Self::Item> {
         if self.end_of_results {
-            Ok(None)
+            None
         } else {
             self.end_of_results = true;
-            if self.group_expr.is_empty() {
+
+            let result = if self.group_expr.is_empty() {
                 self.without_group_by()
             } else {
                 self.with_group_by()
+            };
+
+            match result {
+                Ok(Some(a)) => Some(Ok(a)),
+                Ok(None) => None,
+                Err(e) => Some(Err(e))
             }
         }
     }
+}
 
+impl Relation for AggregateRelation {
     fn schema(&self) -> &Arc<Schema> {
         &self.schema
     }
@@ -729,7 +740,7 @@ impl AggregateRelation {
         let aggr_expr_count = self.aggr_expr.len();
         let mut accumulator_set = create_accumulators(&self.aggr_expr)?;
 
-        while let Some(batch) = self.input.borrow_mut().next()? {
+        while let Ok(batch) = self.input.borrow_mut().next() {
             for i in 0..aggr_expr_count {
                 // evaluate the argument to the aggregate function
                 let array = self.aggr_expr[i].invoke(&batch)?;
@@ -1014,7 +1025,7 @@ impl AggregateRelation {
             result_arrays.push(array?);
         }
 
-        Ok(Some(RecordBatch::try_new(
+        Some(Ok(RecordBatch::try_new(
             self.schema.clone(),
             result_arrays,
         )?))

@@ -54,8 +54,10 @@ impl FilterRelation {
     }
 }
 
-impl Relation for FilterRelation {
-    fn next(&mut self) -> Result<Option<RecordBatch>> {
+impl Iterator for FilterRelation {
+    type Item = Result<RecordBatch>;
+
+    fn next(&mut self) -> Option<Self::Item> {
         match self.input.borrow_mut().next()? {
             Some(batch) => {
                 // evaluate the filter expression against the batch
@@ -64,31 +66,34 @@ impl Relation for FilterRelation {
                     .invoke(&batch)?
                     .as_any()
                     .downcast_ref::<BooleanArray>()
-                {
-                    Some(filter_bools) => {
-                        let filtered_columns: Result<Vec<ArrayRef>> = (0..batch
-                            .num_columns())
-                            .map(|i| {
-                                match filter(batch.column(i).as_ref(), &filter_bools) {
-                                    Ok(result) => Ok(result),
-                                    Err(error) => Err(ExecutionError::from(error)),
-                                }
-                            })
-                            .collect();
+                    {
+                        Some(filter_bools) => {
+                            let filtered_columns: Result<Vec<ArrayRef>> = (0..batch
+                                .num_columns())
+                                .map(|i| {
+                                    match filter(batch.column(i).as_ref(), &filter_bools) {
+                                        Ok(result) => Ok(result),
+                                        Err(error) => Err(ExecutionError::from(error)),
+                                    }
+                                })
+                                .collect();
 
-                        let filtered_batch: RecordBatch =
-                            RecordBatch::try_new(self.schema.clone(), filtered_columns?)?;
+                            let filtered_batch: RecordBatch =
+                                RecordBatch::try_new(self.schema.clone(), filtered_columns?)?;
 
-                        Ok(Some(filtered_batch))
+                            Some(Ok(filtered_batch))
+                        }
+                        _ => Err(ExecutionError::ExecutionError(
+                            "Filter expression did not evaluate to boolean".to_string(),
+                        )),
                     }
-                    _ => Err(ExecutionError::ExecutionError(
-                        "Filter expression did not evaluate to boolean".to_string(),
-                    )),
-                }
             }
-            None => Ok(None),
+            None => None,
         }
     }
+}
+
+impl Relation for FilterRelation {
 
     fn schema(&self) -> &Arc<Schema> {
         &self.schema

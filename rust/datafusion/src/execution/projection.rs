@@ -56,8 +56,10 @@ impl ProjectRelation {
     }
 }
 
-impl Relation for ProjectRelation {
-    fn next(&mut self) -> Result<Option<RecordBatch>> {
+impl Iterator for ProjectRelation {
+    type Item = Result<RecordBatch>;
+
+    fn next(&mut self) -> Option<Self::Item> {
         match self.input.borrow_mut().next()? {
             Some(batch) => {
                 let projected_columns: Result<Vec<ArrayRef>> =
@@ -73,12 +75,14 @@ impl Relation for ProjectRelation {
                 let projected_batch: RecordBatch =
                     RecordBatch::try_new(Arc::new(schema), projected_columns?)?;
 
-                Ok(Some(projected_batch))
+                Some(Ok(projected_batch))
             }
-            None => Ok(None),
+            None => None,
         }
     }
+}
 
+impl Relation for ProjectRelation {
     fn schema(&self) -> &Arc<Schema> {
         &self.schema
     }

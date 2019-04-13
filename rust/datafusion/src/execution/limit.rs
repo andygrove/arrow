@@ -28,6 +28,7 @@ use arrow::record_batch::RecordBatch;
 
 use crate::error::{ExecutionError, Result};
 use crate::execution::relation::Relation;
+use crate::datasource::RecordBatchIterator;
 
 /// Implementation of a LIMIT relation
 pub(super) struct LimitRelation {
@@ -41,6 +42,7 @@ pub(super) struct LimitRelation {
     num_consumed_rows: usize,
 }
 
+
 impl LimitRelation {
     pub fn new(input: Rc<RefCell<Relation>>, limit: usize, schema: Arc<Schema>) -> Self {
         Self {
@@ -50,10 +52,19 @@ impl LimitRelation {
             num_consumed_rows: 0,
         }
     }
+
+    fn schema(&self) -> &Arc<Schema> {
+        &self.schema
+    }
+
 }
 
-impl Relation for LimitRelation {
-    fn next(&mut self) -> Result<Option<RecordBatch>> {
+impl Iterator for LimitRelation {
+
+    type Item = Result<RecordBatch>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+
         match self.input.borrow_mut().next()? {
             Some(batch) => {
                 let capacity = self.limit - self.num_consumed_rows;
@@ -74,17 +85,14 @@ impl Relation for LimitRelation {
                         RecordBatch::try_new(self.schema.clone(), limited_columns?)?;
                     self.num_consumed_rows += capacity;
 
-                    Ok(Some(limited_batch))
+                    Some(Ok(limited_batch))
                 } else {
                     self.num_consumed_rows += batch.num_rows();
-                    Ok(Some(batch))
+                    Some(Ok(batch))
                 }
             }
-            None => Ok(None),
+            None => None,
         }
     }
 
-    fn schema(&self) -> &Arc<Schema> {
-        &self.schema
-    }
 }
