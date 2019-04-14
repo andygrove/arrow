@@ -79,11 +79,7 @@ impl<T: ArrowPrimitiveType> BufferBuilderTrait<T> for BufferBuilder<T> {
     /// Creates a builder with a fixed initial capacity
     default fn new(capacity: usize) -> Self {
         let buffer = MutableBuffer::new(capacity * mem::size_of::<T::Native>());
-        Self {
-            buffer,
-            len: 0,
-            _marker: PhantomData,
-        }
+        Self { buffer, len: 0, _marker: PhantomData }
     }
 
     /// Returns the number of array elements (slots) in the builder
@@ -143,9 +139,7 @@ impl<T: ArrowPrimitiveType> BufferBuilder<T> {
         // `io::Result` has many options one of which we use, so pattern matching is
         // overkill here
         if write_result.is_err() {
-            Err(ArrowError::MemoryError(
-                "Could not write to Buffer, not big enough".to_string(),
-            ))
+            Err(ArrowError::MemoryError("Could not write to Buffer, not big enough".to_string()))
         } else {
             self.len += len_added;
             Ok(())
@@ -160,11 +154,7 @@ impl BufferBuilderTrait<BooleanType> for BufferBuilder<BooleanType> {
         let actual_capacity = bit_util::round_upto_multiple_of_64(byte_capacity);
         let mut buffer = MutableBuffer::new(actual_capacity);
         buffer.set_null_bits(0, actual_capacity);
-        Self {
-            buffer,
-            len: 0,
-            _marker: PhantomData,
-        }
+        Self { buffer, len: 0, _marker: PhantomData }
     }
 
     // Advances the `len` of the underlying `Buffer` by `i` slots of type T
@@ -205,8 +195,7 @@ impl BufferBuilderTrait<BooleanType> for BufferBuilder<BooleanType> {
             let new_byte_capacity = bit_util::ceil(new_capacity, 8);
             let existing_capacity = self.buffer.capacity();
             let new_capacity = self.buffer.reserve(new_byte_capacity)?;
-            self.buffer
-                .set_null_bits(existing_capacity, new_capacity - existing_capacity);
+            self.buffer.set_null_bits(existing_capacity, new_capacity - existing_capacity);
         }
         Ok(())
     }
@@ -354,13 +343,9 @@ impl<T: ArrowPrimitiveType> PrimitiveBuilder<T> {
         let len = self.len();
         let null_bit_buffer = self.bitmap_builder.finish();
         let null_count = len - bit_util::count_set_bits(null_bit_buffer.data());
-        let mut builder = ArrayData::builder(T::get_data_type())
-            .len(len)
-            .add_buffer(self.values_builder.finish());
+        let mut builder = ArrayData::builder(T::get_data_type()).len(len).add_buffer(self.values_builder.finish());
         if null_count > 0 {
-            builder = builder
-                .null_count(null_count)
-                .null_bit_buffer(null_bit_buffer);
+            builder = builder.null_count(null_count).null_bit_buffer(null_bit_buffer);
         }
         let data = builder.build();
         PrimitiveArray::<T>::from(data)
@@ -433,8 +418,7 @@ where
 
     /// Finish the current variable-length list array slot
     pub fn append(&mut self, is_valid: bool) -> Result<()> {
-        self.offsets_builder
-            .append(self.values_builder.len() as i32)?;
+        self.offsets_builder.append(self.values_builder.len() as i32)?;
         self.bitmap_builder.append(is_valid)?;
         self.len += 1;
         Ok(())
@@ -444,25 +428,19 @@ where
     pub fn finish(&mut self) -> ListArray {
         let len = self.len();
         self.len = 0;
-        let values_arr = self
-            .values_builder
-            .as_any_mut()
-            .downcast_mut::<T>()
-            .unwrap()
-            .finish();
+        let values_arr = self.values_builder.as_any_mut().downcast_mut::<T>().unwrap().finish();
         let values_data = values_arr.data();
 
         let offset_buffer = self.offsets_builder.finish();
         let null_bit_buffer = self.bitmap_builder.finish();
         self.offsets_builder.append(0).unwrap();
-        let data =
-            ArrayData::builder(DataType::List(Box::new(values_data.data_type().clone())))
-                .len(len)
-                .null_count(len - bit_util::count_set_bits(null_bit_buffer.data()))
-                .add_buffer(offset_buffer)
-                .add_child_data(values_data)
-                .null_bit_buffer(null_bit_buffer)
-                .build();
+        let data = ArrayData::builder(DataType::List(Box::new(values_data.data_type().clone())))
+            .len(len)
+            .null_count(len - bit_util::count_set_bits(null_bit_buffer.data()))
+            .add_buffer(offset_buffer)
+            .add_child_data(values_data)
+            .null_bit_buffer(null_bit_buffer)
+            .build();
 
         ListArray::from(data)
     }
@@ -505,9 +483,7 @@ impl BinaryBuilder {
     /// array
     pub fn new(capacity: usize) -> Self {
         let values_builder = UInt8Builder::new(capacity);
-        Self {
-            builder: ListBuilder::new(values_builder),
-        }
+        Self { builder: ListBuilder::new(values_builder) }
     }
 
     /// Appends a single byte value into the builder's values array.
@@ -688,13 +664,9 @@ impl StructBuilder {
 
         let null_bit_buffer = self.bitmap_builder.finish();
         let null_count = self.len - bit_util::count_set_bits(null_bit_buffer.data());
-        let mut builder = ArrayData::builder(DataType::Struct(self.fields.clone()))
-            .len(self.len)
-            .child_data(child_data);
+        let mut builder = ArrayData::builder(DataType::Struct(self.fields.clone())).len(self.len).child_data(child_data);
         if null_count > 0 {
-            builder = builder
-                .null_count(null_count)
-                .null_bit_buffer(null_bit_buffer);
+            builder = builder.null_count(null_count).null_bit_buffer(null_bit_buffer);
         }
 
         self.len = 0;
@@ -1049,14 +1021,8 @@ mod tests {
         let list_array = builder.finish();
 
         let values = list_array.values().data().buffers()[0].clone();
-        assert_eq!(
-            Buffer::from(&[0, 1, 2, 3, 4, 5, 6, 7].to_byte_slice()),
-            values
-        );
-        assert_eq!(
-            Buffer::from(&[0, 3, 6, 8].to_byte_slice()),
-            list_array.data().buffers()[0].clone()
-        );
+        assert_eq!(Buffer::from(&[0, 1, 2, 3, 4, 5, 6, 7].to_byte_slice()), values);
+        assert_eq!(Buffer::from(&[0, 3, 6, 8].to_byte_slice()), list_array.data().buffers()[0].clone());
         assert_eq!(DataType::Int32, list_array.value_type());
         assert_eq!(3, list_array.len());
         assert_eq!(0, list_array.null_count());
@@ -1151,24 +1117,15 @@ mod tests {
 
         assert_eq!(4, list_array.len());
         assert_eq!(1, list_array.null_count());
-        assert_eq!(
-            Buffer::from(&[0, 2, 5, 5, 6].to_byte_slice()),
-            list_array.data().buffers()[0].clone()
-        );
+        assert_eq!(Buffer::from(&[0, 2, 5, 5, 6].to_byte_slice()), list_array.data().buffers()[0].clone());
 
         assert_eq!(6, list_array.values().data().len());
         assert_eq!(1, list_array.values().data().null_count());
-        assert_eq!(
-            Buffer::from(&[0, 2, 4, 7, 7, 8, 10].to_byte_slice()),
-            list_array.values().data().buffers()[0].clone()
-        );
+        assert_eq!(Buffer::from(&[0, 2, 4, 7, 7, 8, 10].to_byte_slice()), list_array.values().data().buffers()[0].clone());
 
         assert_eq!(10, list_array.values().data().child_data()[0].len());
         assert_eq!(0, list_array.values().data().child_data()[0].null_count());
-        assert_eq!(
-            Buffer::from(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].to_byte_slice()),
-            list_array.values().data().child_data()[0].buffers()[0].clone()
-        );
+        assert_eq!(Buffer::from(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].to_byte_slice()), list_array.values().data().child_data()[0].buffers()[0].clone());
     }
 
     #[test]
@@ -1262,17 +1219,13 @@ mod tests {
         let mut builder = StructBuilder::new(fields, field_builders);
         assert_eq!(2, builder.num_fields());
 
-        let string_builder = builder
-            .field_builder::<BinaryBuilder>(0)
-            .expect("builder at field 0 should be binary builder");
+        let string_builder = builder.field_builder::<BinaryBuilder>(0).expect("builder at field 0 should be binary builder");
         string_builder.append_string("joe").unwrap();
         string_builder.append_null().unwrap();
         string_builder.append_null().unwrap();
         string_builder.append_string("mark").unwrap();
 
-        let int_builder = builder
-            .field_builder::<Int32Builder>(1)
-            .expect("builder at field 1 should be int builder");
+        let int_builder = builder.field_builder::<Int32Builder>(1).expect("builder at field 1 should be int builder");
         int_builder.append_value(1).unwrap();
         int_builder.append_value(2).unwrap();
         int_builder.append_null().unwrap();
@@ -1288,10 +1241,7 @@ mod tests {
         let struct_data = arr.data();
         assert_eq!(4, struct_data.len());
         assert_eq!(1, struct_data.null_count());
-        assert_eq!(
-            &Some(Bitmap::from(Buffer::from(&[11_u8]))),
-            struct_data.null_bitmap()
-        );
+        assert_eq!(&Some(Bitmap::from(Buffer::from(&[11_u8]))), struct_data.null_bitmap());
 
         let expected_string_data = ArrayData::builder(DataType::Utf8)
             .len(4)
@@ -1301,33 +1251,19 @@ mod tests {
             .add_buffer(Buffer::from("joemark".as_bytes()))
             .build();
 
-        let expected_int_data = ArrayData::builder(DataType::Int32)
-            .len(4)
-            .null_count(1)
-            .null_bit_buffer(Buffer::from(&[11_u8]))
-            .add_buffer(Buffer::from(&[1, 2, 0, 4].to_byte_slice()))
-            .build();
+        let expected_int_data = ArrayData::builder(DataType::Int32).len(4).null_count(1).null_bit_buffer(Buffer::from(&[11_u8])).add_buffer(Buffer::from(&[1, 2, 0, 4].to_byte_slice())).build();
 
         assert_eq!(expected_string_data, arr.column(0).data());
 
         // TODO: implement equality for ArrayData
         assert_eq!(expected_int_data.len(), arr.column(1).data().len());
-        assert_eq!(
-            expected_int_data.null_count(),
-            arr.column(1).data().null_count()
-        );
-        assert_eq!(
-            expected_int_data.null_bitmap(),
-            arr.column(1).data().null_bitmap()
-        );
+        assert_eq!(expected_int_data.null_count(), arr.column(1).data().null_count());
+        assert_eq!(expected_int_data.null_bitmap(), arr.column(1).data().null_bitmap());
         let expected_value_buf = expected_int_data.buffers()[0].clone();
         let actual_value_buf = arr.column(1).data().buffers()[0].clone();
         for i in 0..expected_int_data.len() {
             if !expected_int_data.is_null(i) {
-                assert_eq!(
-                    expected_value_buf.data()[i * 4..(i + 1) * 4],
-                    actual_value_buf.data()[i * 4..(i + 1) * 4]
-                );
+                assert_eq!(expected_value_buf.data()[i * 4..(i + 1) * 4], actual_value_buf.data()[i * 4..(i + 1) * 4]);
             }
         }
     }
@@ -1345,18 +1281,8 @@ mod tests {
         field_builders.push(Box::new(bool_builder) as Box<ArrayBuilder>);
 
         let mut builder = StructBuilder::new(fields, field_builders);
-        builder
-            .field_builder::<Int32Builder>(0)
-            .unwrap()
-            .append_slice(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-            .unwrap();
-        builder
-            .field_builder::<BooleanBuilder>(1)
-            .unwrap()
-            .append_slice(&[
-                false, true, false, true, false, true, false, true, false, true,
-            ])
-            .unwrap();
+        builder.field_builder::<Int32Builder>(0).unwrap().append_slice(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).unwrap();
+        builder.field_builder::<BooleanBuilder>(1).unwrap().append_slice(&[false, true, false, true, false, true, false, true, false, true]).unwrap();
 
         // Append slot values - all are valid.
         for _ in 0..10 {
@@ -1370,16 +1296,8 @@ mod tests {
         assert_eq!(10, arr.len());
         assert_eq!(0, builder.len());
 
-        builder
-            .field_builder::<Int32Builder>(0)
-            .unwrap()
-            .append_slice(&[1, 3, 5, 7, 9])
-            .unwrap();
-        builder
-            .field_builder::<BooleanBuilder>(1)
-            .unwrap()
-            .append_slice(&[false, true, false, true, false])
-            .unwrap();
+        builder.field_builder::<Int32Builder>(0).unwrap().append_slice(&[1, 3, 5, 7, 9]).unwrap();
+        builder.field_builder::<BooleanBuilder>(1).unwrap().append_slice(&[false, true, false, true, false]).unwrap();
 
         // Append slot values - all are valid.
         for _ in 0..5 {

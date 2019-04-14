@@ -48,20 +48,8 @@ use crate::data_type::*;
 // Macro to generate methods create Statistics.
 macro_rules! statistics_new_func {
     ($func:ident, $vtype:ty, $stat:ident) => {
-        pub fn $func(
-            min: $vtype,
-            max: $vtype,
-            distinct: Option<u64>,
-            nulls: u64,
-            is_deprecated: bool,
-        ) -> Self {
-            Statistics::$stat(TypedStatistics::new(
-                min,
-                max,
-                distinct,
-                nulls,
-                is_deprecated,
-            ))
+        pub fn $func(min: $vtype, max: $vtype, distinct: Option<u64>, nulls: u64, is_deprecated: bool) -> Self {
+            Statistics::$stat(TypedStatistics::new(min, max, distinct, nulls, is_deprecated))
         }
     };
 }
@@ -83,19 +71,12 @@ macro_rules! statistics_enum_func {
 }
 
 /// Converts Thrift definition into `Statistics`.
-pub fn from_thrift(
-    physical_type: Type,
-    thrift_stats: Option<TStatistics>,
-) -> Option<Statistics> {
+pub fn from_thrift(physical_type: Type, thrift_stats: Option<TStatistics>) -> Option<Statistics> {
     match thrift_stats {
         Some(stats) => {
             // Number of nulls recorded, when it is not available, we just mark it as 0.
             let null_count = stats.null_count.unwrap_or(0);
-            assert!(
-                null_count >= 0,
-                "Statistics null count is negative ({})",
-                null_count
-            );
+            assert!(null_count >= 0, "Statistics null count is negative ({})", null_count);
 
             // Generic null count.
             let null_count = null_count as u64;
@@ -104,44 +85,18 @@ pub fn from_thrift(
             // Whether or not statistics use deprecated min/max fields.
             let old_format = stats.min_value.is_none() && stats.max_value.is_none();
             // Generic min value as bytes.
-            let min = if old_format {
-                stats.min
-            } else {
-                stats.min_value
-            };
+            let min = if old_format { stats.min } else { stats.min_value };
             // Generic max value as bytes.
-            let max = if old_format {
-                stats.max
-            } else {
-                stats.max_value
-            };
+            let max = if old_format { stats.max } else { stats.max_value };
 
             // Values are encoded using PLAIN encoding definition, except that
             // variable-length byte arrays do not include a length prefix.
             //
             // Instead of using actual decoder, we manually convert values.
             let res = match physical_type {
-                Type::BOOLEAN => Statistics::boolean(
-                    min.map(|data| data[0] != 0),
-                    max.map(|data| data[0] != 0),
-                    distinct_count,
-                    null_count,
-                    old_format,
-                ),
-                Type::INT32 => Statistics::int32(
-                    min.map(|data| LittleEndian::read_i32(&data)),
-                    max.map(|data| LittleEndian::read_i32(&data)),
-                    distinct_count,
-                    null_count,
-                    old_format,
-                ),
-                Type::INT64 => Statistics::int64(
-                    min.map(|data| LittleEndian::read_i64(&data)),
-                    max.map(|data| LittleEndian::read_i64(&data)),
-                    distinct_count,
-                    null_count,
-                    old_format,
-                ),
+                Type::BOOLEAN => Statistics::boolean(min.map(|data| data[0] != 0), max.map(|data| data[0] != 0), distinct_count, null_count, old_format),
+                Type::INT32 => Statistics::int32(min.map(|data| LittleEndian::read_i32(&data)), max.map(|data| LittleEndian::read_i32(&data)), distinct_count, null_count, old_format),
+                Type::INT64 => Statistics::int64(min.map(|data| LittleEndian::read_i64(&data)), max.map(|data| LittleEndian::read_i64(&data)), distinct_count, null_count, old_format),
                 Type::INT96 => {
                     // INT96 statistics may not be correct, because comparison is signed
                     // byte-wise, not actual timestamps. It is recommended to ignore
@@ -149,53 +104,23 @@ pub fn from_thrift(
                     let min = min.map(|data| {
                         assert_eq!(data.len(), 12);
                         unsafe {
-                            let raw = ::std::slice::from_raw_parts(
-                                data.as_ptr() as *mut u32,
-                                3,
-                            );
+                            let raw = ::std::slice::from_raw_parts(data.as_ptr() as *mut u32, 3);
                             Int96::from(Vec::from(raw))
                         }
                     });
                     let max = max.map(|data| {
                         assert_eq!(data.len(), 12);
                         unsafe {
-                            let raw = ::std::slice::from_raw_parts(
-                                data.as_ptr() as *mut u32,
-                                3,
-                            );
+                            let raw = ::std::slice::from_raw_parts(data.as_ptr() as *mut u32, 3);
                             Int96::from(Vec::from(raw))
                         }
                     });
                     Statistics::int96(min, max, distinct_count, null_count, old_format)
                 }
-                Type::FLOAT => Statistics::float(
-                    min.map(|data| LittleEndian::read_f32(&data)),
-                    max.map(|data| LittleEndian::read_f32(&data)),
-                    distinct_count,
-                    null_count,
-                    old_format,
-                ),
-                Type::DOUBLE => Statistics::double(
-                    min.map(|data| LittleEndian::read_f64(&data)),
-                    max.map(|data| LittleEndian::read_f64(&data)),
-                    distinct_count,
-                    null_count,
-                    old_format,
-                ),
-                Type::BYTE_ARRAY => Statistics::byte_array(
-                    min.map(|data| ByteArray::from(data)),
-                    max.map(|data| ByteArray::from(data)),
-                    distinct_count,
-                    null_count,
-                    old_format,
-                ),
-                Type::FIXED_LEN_BYTE_ARRAY => Statistics::fixed_len_byte_array(
-                    min.map(|data| ByteArray::from(data)),
-                    max.map(|data| ByteArray::from(data)),
-                    distinct_count,
-                    null_count,
-                    old_format,
-                ),
+                Type::FLOAT => Statistics::float(min.map(|data| LittleEndian::read_f32(&data)), max.map(|data| LittleEndian::read_f32(&data)), distinct_count, null_count, old_format),
+                Type::DOUBLE => Statistics::double(min.map(|data| LittleEndian::read_f64(&data)), max.map(|data| LittleEndian::read_f64(&data)), distinct_count, null_count, old_format),
+                Type::BYTE_ARRAY => Statistics::byte_array(min.map(|data| ByteArray::from(data)), max.map(|data| ByteArray::from(data)), distinct_count, null_count, old_format),
+                Type::FIXED_LEN_BYTE_ARRAY => Statistics::fixed_len_byte_array(min.map(|data| ByteArray::from(data)), max.map(|data| ByteArray::from(data)), distinct_count, null_count, old_format),
             };
 
             Some(res)
@@ -215,25 +140,14 @@ pub fn to_thrift(stats: Option<&Statistics>) -> Option<TStatistics> {
     let mut thrift_stats = TStatistics {
         max: None,
         min: None,
-        null_count: if stats.has_nulls() {
-            Some(stats.null_count() as i64)
-        } else {
-            None
-        },
+        null_count: if stats.has_nulls() { Some(stats.null_count() as i64) } else { None },
         distinct_count: stats.distinct_count().map(|value| value as i64),
         max_value: None,
         min_value: None,
     };
 
     // Get min/max if set.
-    let (min, max) = if stats.has_min_max_set() {
-        (
-            Some(stats.min_bytes().to_vec()),
-            Some(stats.max_bytes().to_vec()),
-        )
-    } else {
-        (None, None)
-    };
+    let (min, max) = if stats.has_min_max_set() { (Some(stats.min_bytes().to_vec()), Some(stats.max_bytes().to_vec())) } else { (None, None) };
 
     if stats.is_min_max_deprecated() {
         thrift_stats.min = min;
@@ -363,13 +277,7 @@ pub struct TypedStatistics<T: DataType> {
 
 impl<T: DataType> TypedStatistics<T> {
     /// Creates new typed statistics.
-    pub fn new(
-        min: Option<T::T>,
-        max: Option<T::T>,
-        distinct_count: Option<u64>,
-        null_count: u64,
-        is_min_max_deprecated: bool,
-    ) -> Self {
+    pub fn new(min: Option<T::T>, max: Option<T::T>, distinct_count: Option<u64>, null_count: u64, is_min_max_deprecated: bool) -> Self {
         Self {
             min,
             max,
@@ -463,22 +371,14 @@ impl<T: DataType> fmt::Debug for TypedStatistics<T> {
             f,
             "{{min: {:?}, max: {:?}, distinct_count: {:?}, null_count: {}, \
              min_max_deprecated: {}}}",
-            self.min,
-            self.max,
-            self.distinct_count,
-            self.null_count,
-            self.is_min_max_deprecated
+            self.min, self.max, self.distinct_count, self.null_count, self.is_min_max_deprecated
         )
     }
 }
 
 impl<T: DataType> cmp::PartialEq for TypedStatistics<T> {
     fn eq(&self, other: &TypedStatistics<T>) -> bool {
-        self.min == other.min
-            && self.max == other.max
-            && self.distinct_count == other.distinct_count
-            && self.null_count == other.null_count
-            && self.is_min_max_deprecated == other.is_min_max_deprecated
+        self.min == other.min && self.max == other.max && self.distinct_count == other.distinct_count && self.null_count == other.null_count && self.is_min_max_deprecated == other.is_min_max_deprecated
     }
 }
 
@@ -524,13 +424,7 @@ mod tests {
         assert_eq!(stats.min_bytes(), (-123).as_bytes());
         assert_eq!(stats.max_bytes(), 234.as_bytes());
 
-        let stats = Statistics::byte_array(
-            Some(ByteArray::from(vec![1, 2, 3])),
-            Some(ByteArray::from(vec![3, 4, 5])),
-            None,
-            1,
-            true,
-        );
+        let stats = Statistics::byte_array(Some(ByteArray::from(vec![1, 2, 3])), Some(ByteArray::from(vec![3, 4, 5])), None, 1, true);
         assert!(stats.has_min_max_set());
         assert_eq!(stats.min_bytes(), &[1, 2, 3]);
         assert_eq!(stats.max_bytes(), &[3, 4, 5]);
@@ -577,10 +471,7 @@ mod tests {
     #[test]
     fn test_statistics_display() {
         let stats = Statistics::int32(Some(1), Some(12), None, 12, true);
-        assert_eq!(
-            format!("{}", stats),
-            "{min: 1, max: 12, distinct_count: N/A, null_count: 12, min_max_deprecated: true}"
-        );
+        assert_eq!(format!("{}", stats), "{min: 1, max: 12, distinct_count: N/A, null_count: 12, min_max_deprecated: true}");
 
         let stats = Statistics::int64(None, None, None, 7, false);
         assert_eq!(
@@ -589,30 +480,15 @@ mod tests {
              false}"
         );
 
-        let stats = Statistics::int96(
-            Some(Int96::from(vec![1, 0, 0])),
-            Some(Int96::from(vec![2, 3, 4])),
-            None,
-            3,
-            true,
-        );
+        let stats = Statistics::int96(Some(Int96::from(vec![1, 0, 0])), Some(Int96::from(vec![2, 3, 4])), None, 3, true);
         assert_eq!(
             format!("{}", stats),
             "{min: [1, 0, 0], max: [2, 3, 4], distinct_count: N/A, null_count: 3, \
              min_max_deprecated: true}"
         );
 
-        let stats = Statistics::byte_array(
-            Some(ByteArray::from(vec![1u8])),
-            Some(ByteArray::from(vec![2u8])),
-            Some(5),
-            7,
-            false,
-        );
-        assert_eq!(
-            format!("{}", stats),
-            "{min: [1], max: [2], distinct_count: 5, null_count: 7, min_max_deprecated: false}"
-        );
+        let stats = Statistics::byte_array(Some(ByteArray::from(vec![1u8])), Some(ByteArray::from(vec![2u8])), Some(5), 7, false);
+        assert_eq!(format!("{}", stats), "{min: [1], max: [2], distinct_count: 5, null_count: 7, min_max_deprecated: false}");
     }
 
     #[test]
@@ -625,31 +501,11 @@ mod tests {
         assert!(Statistics::int32(Some(12), Some(45), None, 23, true) != expected);
         assert!(Statistics::int32(Some(12), Some(45), None, 11, false) != expected);
 
-        assert!(
-            Statistics::int32(Some(12), Some(45), None, 11, false)
-                != Statistics::int64(Some(12), Some(45), None, 11, false)
-        );
+        assert!(Statistics::int32(Some(12), Some(45), None, 11, false) != Statistics::int64(Some(12), Some(45), None, 11, false));
 
-        assert!(
-            Statistics::boolean(Some(false), Some(true), None, 0, true)
-                != Statistics::double(Some(1.2), Some(4.5), None, 0, true)
-        );
+        assert!(Statistics::boolean(Some(false), Some(true), None, 0, true) != Statistics::double(Some(1.2), Some(4.5), None, 0, true));
 
-        assert!(
-            Statistics::byte_array(
-                Some(ByteArray::from(vec![1, 2, 3])),
-                Some(ByteArray::from(vec![1, 2, 3])),
-                None,
-                0,
-                true
-            ) != Statistics::fixed_len_byte_array(
-                Some(ByteArray::from(vec![1, 2, 3])),
-                Some(ByteArray::from(vec![1, 2, 3])),
-                None,
-                0,
-                true
-            )
-        );
+        assert!(Statistics::byte_array(Some(ByteArray::from(vec![1, 2, 3])), Some(ByteArray::from(vec![1, 2, 3])), None, 0, true) != Statistics::fixed_len_byte_array(Some(ByteArray::from(vec![1, 2, 3])), Some(ByteArray::from(vec![1, 2, 3])), None, 0, true));
     }
 
     #[test]
@@ -684,22 +540,10 @@ mod tests {
         check_stats(Statistics::double(Some(1.2), Some(3.4), None, 0, false));
         check_stats(Statistics::double(None, None, None, 7, true));
 
-        check_stats(Statistics::byte_array(
-            Some(ByteArray::from(vec![1, 2, 3])),
-            Some(ByteArray::from(vec![3, 4, 5])),
-            None,
-            7,
-            true,
-        ));
+        check_stats(Statistics::byte_array(Some(ByteArray::from(vec![1, 2, 3])), Some(ByteArray::from(vec![3, 4, 5])), None, 7, true));
         check_stats(Statistics::byte_array(None, None, None, 7, true));
 
-        check_stats(Statistics::fixed_len_byte_array(
-            Some(ByteArray::from(vec![1, 2, 3])),
-            Some(ByteArray::from(vec![3, 4, 5])),
-            None,
-            7,
-            true,
-        ));
+        check_stats(Statistics::fixed_len_byte_array(Some(ByteArray::from(vec![1, 2, 3])), Some(ByteArray::from(vec![3, 4, 5])), None, 7, true));
         check_stats(Statistics::fixed_len_byte_array(None, None, None, 7, true));
     }
 }

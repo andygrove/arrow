@@ -98,33 +98,19 @@ impl CompiledAggregateExpression {
 }
 
 /// Compiles an aggregate expression into a closure
-pub(super) fn compile_aggregate_expr(
-    ctx: &ExecutionContext,
-    expr: &Expr,
-    input_schema: &Schema,
-) -> Result<CompiledAggregateExpression> {
+pub(super) fn compile_aggregate_expr(ctx: &ExecutionContext, expr: &Expr, input_schema: &Schema) -> Result<CompiledAggregateExpression> {
     match *expr {
-        Expr::AggregateFunction {
-            ref name,
-            ref args,
-            ref return_type,
-        } => {
+        Expr::AggregateFunction { ref name, ref args, ref return_type } => {
             assert_eq!(1, args.len());
 
-            let compiled_args: Vec<CompiledExpr> = args
-                .iter()
-                .map(|e| compile_expr(&ctx, e, input_schema))
-                .collect::<Result<Vec<_>>>()?;
+            let compiled_args: Vec<CompiledExpr> = args.iter().map(|e| compile_expr(&ctx, e, input_schema)).collect::<Result<Vec<_>>>()?;
 
             let func = match name.to_lowercase().as_ref() {
                 "min" => Ok(AggregateType::Min),
                 "max" => Ok(AggregateType::Max),
                 "count" => Ok(AggregateType::Count),
                 "sum" => Ok(AggregateType::Sum),
-                _ => Err(ExecutionError::General(format!(
-                    "Unsupported aggregate function '{}'",
-                    name
-                ))),
+                _ => Err(ExecutionError::General(format!("Unsupported aggregate function '{}'", name))),
             };
 
             Ok(CompiledAggregateExpression {
@@ -150,40 +136,17 @@ macro_rules! math_ops {
         let left_values = $LEFT.invoke($BATCH)?;
         let right_values = $RIGHT.invoke($BATCH)?;
         match (left_values.data_type(), right_values.data_type()) {
-            (DataType::Int8, DataType::Int8) => {
-                binary_op!(left_values, right_values, $OP, Int8Array)
-            }
-            (DataType::Int16, DataType::Int16) => {
-                binary_op!(left_values, right_values, $OP, Int16Array)
-            }
-            (DataType::Int32, DataType::Int32) => {
-                binary_op!(left_values, right_values, $OP, Int32Array)
-            }
-            (DataType::Int64, DataType::Int64) => {
-                binary_op!(left_values, right_values, $OP, Int64Array)
-            }
-            (DataType::UInt8, DataType::UInt8) => {
-                binary_op!(left_values, right_values, $OP, UInt8Array)
-            }
-            (DataType::UInt16, DataType::UInt16) => {
-                binary_op!(left_values, right_values, $OP, UInt16Array)
-            }
-            (DataType::UInt32, DataType::UInt32) => {
-                binary_op!(left_values, right_values, $OP, UInt32Array)
-            }
-            (DataType::UInt64, DataType::UInt64) => {
-                binary_op!(left_values, right_values, $OP, UInt64Array)
-            }
-            (DataType::Float32, DataType::Float32) => {
-                binary_op!(left_values, right_values, $OP, Float32Array)
-            }
-            (DataType::Float64, DataType::Float64) => {
-                binary_op!(left_values, right_values, $OP, Float64Array)
-            }
-            (l, r) => Err(ExecutionError::ExecutionError(format!(
-                "Cannot perform math operation on {:?} and {:?}",
-                l, r
-            ))),
+            (DataType::Int8, DataType::Int8) => binary_op!(left_values, right_values, $OP, Int8Array),
+            (DataType::Int16, DataType::Int16) => binary_op!(left_values, right_values, $OP, Int16Array),
+            (DataType::Int32, DataType::Int32) => binary_op!(left_values, right_values, $OP, Int32Array),
+            (DataType::Int64, DataType::Int64) => binary_op!(left_values, right_values, $OP, Int64Array),
+            (DataType::UInt8, DataType::UInt8) => binary_op!(left_values, right_values, $OP, UInt8Array),
+            (DataType::UInt16, DataType::UInt16) => binary_op!(left_values, right_values, $OP, UInt16Array),
+            (DataType::UInt32, DataType::UInt32) => binary_op!(left_values, right_values, $OP, UInt32Array),
+            (DataType::UInt64, DataType::UInt64) => binary_op!(left_values, right_values, $OP, UInt64Array),
+            (DataType::Float32, DataType::Float32) => binary_op!(left_values, right_values, $OP, Float32Array),
+            (DataType::Float64, DataType::Float64) => binary_op!(left_values, right_values, $OP, Float64Array),
+            (l, r) => Err(ExecutionError::ExecutionError(format!("Cannot perform math operation on {:?} and {:?}", l, r))),
         }
     }};
 }
@@ -193,40 +156,17 @@ macro_rules! comparison_ops {
         let left_values = $LEFT.invoke($BATCH)?;
         let right_values = $RIGHT.invoke($BATCH)?;
         match (left_values.data_type(), right_values.data_type()) {
-            (DataType::Int8, DataType::Int8) => {
-                binary_op!(left_values, right_values, $OP, Int8Array)
-            }
-            (DataType::Int16, DataType::Int16) => {
-                binary_op!(left_values, right_values, $OP, Int16Array)
-            }
-            (DataType::Int32, DataType::Int32) => {
-                binary_op!(left_values, right_values, $OP, Int32Array)
-            }
-            (DataType::Int64, DataType::Int64) => {
-                binary_op!(left_values, right_values, $OP, Int64Array)
-            }
-            (DataType::UInt8, DataType::UInt8) => {
-                binary_op!(left_values, right_values, $OP, UInt8Array)
-            }
-            (DataType::UInt16, DataType::UInt16) => {
-                binary_op!(left_values, right_values, $OP, UInt16Array)
-            }
-            (DataType::UInt32, DataType::UInt32) => {
-                binary_op!(left_values, right_values, $OP, UInt32Array)
-            }
-            (DataType::UInt64, DataType::UInt64) => {
-                binary_op!(left_values, right_values, $OP, UInt64Array)
-            }
-            (DataType::Float32, DataType::Float32) => {
-                binary_op!(left_values, right_values, $OP, Float32Array)
-            }
-            (DataType::Float64, DataType::Float64) => {
-                binary_op!(left_values, right_values, $OP, Float64Array)
-            }
-            (l, r) => Err(ExecutionError::ExecutionError(format!(
-                "Cannot compare {:?} with {:?}",
-                l, r
-            ))),
+            (DataType::Int8, DataType::Int8) => binary_op!(left_values, right_values, $OP, Int8Array),
+            (DataType::Int16, DataType::Int16) => binary_op!(left_values, right_values, $OP, Int16Array),
+            (DataType::Int32, DataType::Int32) => binary_op!(left_values, right_values, $OP, Int32Array),
+            (DataType::Int64, DataType::Int64) => binary_op!(left_values, right_values, $OP, Int64Array),
+            (DataType::UInt8, DataType::UInt8) => binary_op!(left_values, right_values, $OP, UInt8Array),
+            (DataType::UInt16, DataType::UInt16) => binary_op!(left_values, right_values, $OP, UInt16Array),
+            (DataType::UInt32, DataType::UInt32) => binary_op!(left_values, right_values, $OP, UInt32Array),
+            (DataType::UInt64, DataType::UInt64) => binary_op!(left_values, right_values, $OP, UInt64Array),
+            (DataType::Float32, DataType::Float32) => binary_op!(left_values, right_values, $OP, Float32Array),
+            (DataType::Float64, DataType::Float64) => binary_op!(left_values, right_values, $OP, Float64Array),
+            (l, r) => Err(ExecutionError::ExecutionError(format!("Cannot compare {:?} with {:?}", l, r))),
         }
     }};
 }
@@ -235,13 +175,7 @@ macro_rules! boolean_ops {
     ($LEFT:expr, $RIGHT:expr, $BATCH:expr, $OP:ident) => {{
         let left_values = $LEFT.invoke($BATCH)?;
         let right_values = $RIGHT.invoke($BATCH)?;
-        Ok(Arc::new(compute::$OP(
-            left_values.as_any().downcast_ref::<BooleanArray>().unwrap(),
-            right_values
-                .as_any()
-                .downcast_ref::<BooleanArray>()
-                .unwrap(),
-        )?))
+        Ok(Arc::new(compute::$OP(left_values.as_any().downcast_ref::<BooleanArray>().unwrap(), right_values.as_any().downcast_ref::<BooleanArray>().unwrap())?))
     }};
 }
 
@@ -265,11 +199,7 @@ macro_rules! literal_array {
 }
 
 /// Compiles a scalar expression into a closure
-pub(super) fn compile_expr(
-    ctx: &ExecutionContext,
-    expr: &Expr,
-    input_schema: &Schema,
-) -> Result<CompiledExpr> {
+pub(super) fn compile_expr(ctx: &ExecutionContext, expr: &Expr, input_schema: &Schema) -> Result<CompiledExpr> {
     match expr {
         &Expr::Literal(ref value) => match value {
             //NOTE: this is a temporary hack .. due to the way expressions like 'a > 1'
@@ -289,41 +219,27 @@ pub(super) fn compile_expr(
             ScalarValue::UInt64(n) => literal_array!(n, UInt64Array, UInt64),
             ScalarValue::Float32(n) => literal_array!(n, Float32Array, Float32),
             ScalarValue::Float64(n) => literal_array!(n, Float64Array, Float64),
-            other => Err(ExecutionError::ExecutionError(format!(
-                "Unsupported literal type {:?}",
-                other
-            ))),
+            other => Err(ExecutionError::ExecutionError(format!("Unsupported literal type {:?}", other))),
         },
         &Expr::Column(index) => {
             if index < input_schema.fields().len() {
                 Ok(CompiledExpr {
                     name: input_schema.field(index).name().clone(),
-                    f: Rc::new(move |batch: &RecordBatch| {
-                        Ok((*batch.column(index)).clone())
-                    }),
+                    f: Rc::new(move |batch: &RecordBatch| Ok((*batch.column(index)).clone())),
                     t: input_schema.field(index).data_type().clone(),
                 })
             } else {
-                Err(ExecutionError::InvalidColumn(format!(
-                    "Column index {} out of bounds",
-                    index
-                )))
+                Err(ExecutionError::InvalidColumn(format!("Column index {} out of bounds", index)))
             }
         }
-        &Expr::Cast {
-            ref expr,
-            ref data_type,
-        } => match expr.as_ref() {
+        &Expr::Cast { ref expr, ref data_type } => match expr.as_ref() {
             &Expr::Column(index) => {
                 let col = input_schema.field(index);
                 let dt = data_type.clone();
                 Ok(CompiledExpr {
                     name: col.name().clone(),
                     t: col.data_type().clone(),
-                    f: Rc::new(move |batch: &RecordBatch| {
-                        compute::cast(batch.column(index), &dt)
-                            .map_err(|e| ExecutionError::ArrowError(e))
-                    }),
+                    f: Rc::new(move |batch: &RecordBatch| compute::cast(batch.column(index), &dt).map_err(|e| ExecutionError::ArrowError(e))),
                 })
             }
             other => {
@@ -336,17 +252,12 @@ pub(super) fn compile_expr(
                         // evaluate the expression
                         let array = compiled_expr.invoke(batch)?;
                         // cast the result
-                        compute::cast(&array, &dt)
-                            .map_err(|e| ExecutionError::ArrowError(e))
+                        compute::cast(&array, &dt).map_err(|e| ExecutionError::ArrowError(e))
                     }),
                 })
             }
         },
-        &Expr::BinaryExpr {
-            ref left,
-            ref op,
-            ref right,
-        } => {
+        &Expr::BinaryExpr { ref left, ref op, ref right } => {
             let left_expr = compile_expr(ctx, left, input_schema)?;
             let right_expr = compile_expr(ctx, right, input_schema)?;
             let name = format!("{:?} {:?} {:?}", left, op, right);
@@ -354,97 +265,67 @@ pub(super) fn compile_expr(
             match op {
                 &Operator::Eq => Ok(CompiledExpr {
                     name,
-                    f: Rc::new(move |batch: &RecordBatch| {
-                        comparison_ops!(left_expr, right_expr, batch, eq)
-                    }),
+                    f: Rc::new(move |batch: &RecordBatch| comparison_ops!(left_expr, right_expr, batch, eq)),
                     t: DataType::Boolean,
                 }),
                 &Operator::NotEq => Ok(CompiledExpr {
                     name,
-                    f: Rc::new(move |batch: &RecordBatch| {
-                        comparison_ops!(left_expr, right_expr, batch, neq)
-                    }),
+                    f: Rc::new(move |batch: &RecordBatch| comparison_ops!(left_expr, right_expr, batch, neq)),
                     t: DataType::Boolean,
                 }),
                 &Operator::Lt => Ok(CompiledExpr {
                     name,
-                    f: Rc::new(move |batch: &RecordBatch| {
-                        comparison_ops!(left_expr, right_expr, batch, lt)
-                    }),
+                    f: Rc::new(move |batch: &RecordBatch| comparison_ops!(left_expr, right_expr, batch, lt)),
                     t: DataType::Boolean,
                 }),
                 &Operator::LtEq => Ok(CompiledExpr {
                     name,
-                    f: Rc::new(move |batch: &RecordBatch| {
-                        comparison_ops!(left_expr, right_expr, batch, lt_eq)
-                    }),
+                    f: Rc::new(move |batch: &RecordBatch| comparison_ops!(left_expr, right_expr, batch, lt_eq)),
                     t: DataType::Boolean,
                 }),
                 &Operator::Gt => Ok(CompiledExpr {
                     name,
-                    f: Rc::new(move |batch: &RecordBatch| {
-                        comparison_ops!(left_expr, right_expr, batch, gt)
-                    }),
+                    f: Rc::new(move |batch: &RecordBatch| comparison_ops!(left_expr, right_expr, batch, gt)),
                     t: DataType::Boolean,
                 }),
                 &Operator::GtEq => Ok(CompiledExpr {
                     name,
-                    f: Rc::new(move |batch: &RecordBatch| {
-                        comparison_ops!(left_expr, right_expr, batch, gt_eq)
-                    }),
+                    f: Rc::new(move |batch: &RecordBatch| comparison_ops!(left_expr, right_expr, batch, gt_eq)),
                     t: DataType::Boolean,
                 }),
                 &Operator::And => Ok(CompiledExpr {
                     name,
-                    f: Rc::new(move |batch: &RecordBatch| {
-                        boolean_ops!(left_expr, right_expr, batch, and)
-                    }),
+                    f: Rc::new(move |batch: &RecordBatch| boolean_ops!(left_expr, right_expr, batch, and)),
                     t: DataType::Boolean,
                 }),
                 &Operator::Or => Ok(CompiledExpr {
                     name,
-                    f: Rc::new(move |batch: &RecordBatch| {
-                        boolean_ops!(left_expr, right_expr, batch, or)
-                    }),
+                    f: Rc::new(move |batch: &RecordBatch| boolean_ops!(left_expr, right_expr, batch, or)),
                     t: DataType::Boolean,
                 }),
                 &Operator::Plus => Ok(CompiledExpr {
                     name,
-                    f: Rc::new(move |batch: &RecordBatch| {
-                        math_ops!(left_expr, right_expr, batch, add)
-                    }),
+                    f: Rc::new(move |batch: &RecordBatch| math_ops!(left_expr, right_expr, batch, add)),
                     t: op_type,
                 }),
                 &Operator::Minus => Ok(CompiledExpr {
                     name,
-                    f: Rc::new(move |batch: &RecordBatch| {
-                        math_ops!(left_expr, right_expr, batch, subtract)
-                    }),
+                    f: Rc::new(move |batch: &RecordBatch| math_ops!(left_expr, right_expr, batch, subtract)),
                     t: op_type,
                 }),
                 &Operator::Multiply => Ok(CompiledExpr {
                     name,
-                    f: Rc::new(move |batch: &RecordBatch| {
-                        math_ops!(left_expr, right_expr, batch, multiply)
-                    }),
+                    f: Rc::new(move |batch: &RecordBatch| math_ops!(left_expr, right_expr, batch, multiply)),
                     t: op_type,
                 }),
                 &Operator::Divide => Ok(CompiledExpr {
                     name,
-                    f: Rc::new(move |batch: &RecordBatch| {
-                        math_ops!(left_expr, right_expr, batch, divide)
-                    }),
+                    f: Rc::new(move |batch: &RecordBatch| math_ops!(left_expr, right_expr, batch, divide)),
                     t: op_type,
                 }),
-                other => Err(ExecutionError::NotImplemented(format!(
-                    "Unsupported operator: {:?}",
-                    other
-                ))),
+                other => Err(ExecutionError::NotImplemented(format!("Unsupported operator: {:?}", other))),
             }
         }
-        other => Err(ExecutionError::NotImplemented(format!(
-            "Unsupported expression {:?}",
-            other
-        ))),
+        other => Err(ExecutionError::NotImplemented(format!("Unsupported expression {:?}", other))),
     }
 }

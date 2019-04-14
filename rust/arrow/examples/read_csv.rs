@@ -25,47 +25,22 @@ use arrow::csv;
 use arrow::datatypes::{DataType, Field, Schema};
 
 fn main() {
-    let schema = Schema::new(vec![
-        Field::new("city", DataType::Utf8, false),
-        Field::new("lat", DataType::Float64, false),
-        Field::new("lng", DataType::Float64, false),
-    ]);
+    let schema = Schema::new(vec![Field::new("city", DataType::Utf8, false), Field::new("lat", DataType::Float64, false), Field::new("lng", DataType::Float64, false)]);
 
     let file = File::open("test/data/uk_cities.csv").unwrap();
 
     let mut csv = csv::Reader::new(file, Arc::new(schema), false, 1024, None);
     let batch = csv.next().unwrap().unwrap();
 
-    println!(
-        "Loaded {} rows containing {} columns",
-        batch.num_rows(),
-        batch.num_columns()
-    );
+    println!("Loaded {} rows containing {} columns", batch.num_rows(), batch.num_columns());
 
-    let city = batch
-        .column(0)
-        .as_any()
-        .downcast_ref::<BinaryArray>()
-        .unwrap();
-    let lat = batch
-        .column(1)
-        .as_any()
-        .downcast_ref::<Float64Array>()
-        .unwrap();
-    let lng = batch
-        .column(2)
-        .as_any()
-        .downcast_ref::<Float64Array>()
-        .unwrap();
+    let city = batch.column(0).as_any().downcast_ref::<BinaryArray>().unwrap();
+    let lat = batch.column(1).as_any().downcast_ref::<Float64Array>().unwrap();
+    let lng = batch.column(2).as_any().downcast_ref::<Float64Array>().unwrap();
 
     for i in 0..batch.num_rows() {
         let city_name: String = String::from_utf8(city.value(i).to_vec()).unwrap();
 
-        println!(
-            "City: {}, Latitude: {}, Longitude: {}",
-            city_name,
-            lat.value(i),
-            lng.value(i)
-        );
+        println!("City: {}, Latitude: {}, Longitude: {}", city_name, lat.value(i), lng.value(i));
     }
 }

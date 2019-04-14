@@ -74,10 +74,7 @@ impl Buffer {
     pub fn from_raw_parts(ptr: *const u8, len: usize) -> Self {
         assert!(memory::is_aligned(ptr, 64), "memory not aligned");
         let buf_data = BufferData { ptr, len };
-        Buffer {
-            data: Arc::new(buf_data),
-            offset: 0,
-        }
+        Buffer { data: Arc::new(buf_data), offset: 0 }
     }
 
     /// Returns the number of bytes in the buffer
@@ -97,14 +94,8 @@ impl Buffer {
 
     /// Returns a slice of this buffer, starting from `offset`.
     pub fn slice(&self, offset: usize) -> Self {
-        assert!(
-            self.offset + offset <= self.len(),
-            "the offset of the new Buffer cannot exceed the existing length"
-        );
-        Self {
-            data: self.data.clone(),
-            offset: self.offset + offset,
-        }
+        assert!(self.offset + offset <= self.len(), "the offset of the new Buffer cannot exceed the existing length");
+        Self { data: self.data.clone(), offset: self.offset + offset }
     }
 
     /// Returns a raw pointer for this buffer.
@@ -123,10 +114,7 @@ impl Buffer {
 
 impl Clone for Buffer {
     fn clone(&self) -> Buffer {
-        Buffer {
-            data: self.data.clone(),
-            offset: self.offset,
-        }
+        Buffer { data: self.data.clone(), offset: self.offset }
     }
 }
 
@@ -155,19 +143,10 @@ where
     let mut result = MutableBuffer::new(left.len()).with_bitset(left.len(), false);
     let lanes = u8x64::lanes();
     for i in (0..left.len()).step_by(lanes) {
-        let left_data =
-            unsafe { from_raw_parts(left.raw_data().offset(i as isize), lanes) };
-        let right_data =
-            unsafe { from_raw_parts(right.raw_data().offset(i as isize), lanes) };
-        let result_slice: &mut [u8] = unsafe {
-            from_raw_parts_mut(
-                (result.data_mut().as_mut_ptr() as *mut u8).offset(i as isize),
-                lanes,
-            )
-        };
-        unsafe {
-            bit_util::bitwise_bin_op_simd(&left_data, &right_data, result_slice, &op)
-        };
+        let left_data = unsafe { from_raw_parts(left.raw_data().offset(i as isize), lanes) };
+        let right_data = unsafe { from_raw_parts(right.raw_data().offset(i as isize), lanes) };
+        let result_slice: &mut [u8] = unsafe { from_raw_parts_mut((result.data_mut().as_mut_ptr() as *mut u8).offset(i as isize), lanes) };
+        unsafe { bit_util::bitwise_bin_op_simd(&left_data, &right_data, result_slice, &op) };
     }
     return result.freeze();
 }
@@ -177,9 +156,7 @@ impl<'a, 'b> BitAnd<&'b Buffer> for &'a Buffer {
 
     fn bitand(self, rhs: &'b Buffer) -> Result<Buffer> {
         if self.len() != rhs.len() {
-            return Err(ArrowError::ComputeError(
-                "Buffers must be the same size to apply Bitwise AND.".to_string(),
-            ));
+            return Err(ArrowError::ComputeError("Buffers must be the same size to apply Bitwise AND.".to_string()));
         }
 
         // SIMD implementation if available
@@ -194,11 +171,7 @@ impl<'a, 'b> BitAnd<&'b Buffer> for &'a Buffer {
             let mut builder = UInt8BufferBuilder::new(self.len());
             for i in 0..self.len() {
                 unsafe {
-                    builder
-                        .append(
-                            self.data().get_unchecked(i) & rhs.data().get_unchecked(i),
-                        )
-                        .unwrap();
+                    builder.append(self.data().get_unchecked(i) & rhs.data().get_unchecked(i)).unwrap();
                 }
             }
             Ok(builder.finish())
@@ -211,9 +184,7 @@ impl<'a, 'b> BitOr<&'b Buffer> for &'a Buffer {
 
     fn bitor(self, rhs: &'b Buffer) -> Result<Buffer> {
         if self.len() != rhs.len() {
-            return Err(ArrowError::ComputeError(
-                "Buffers must be the same size to apply Bitwise OR.".to_string(),
-            ));
+            return Err(ArrowError::ComputeError("Buffers must be the same size to apply Bitwise OR.".to_string()));
         }
 
         // SIMD implementation if available
@@ -228,11 +199,7 @@ impl<'a, 'b> BitOr<&'b Buffer> for &'a Buffer {
             let mut builder = UInt8BufferBuilder::new(self.len());
             for i in 0..self.len() {
                 unsafe {
-                    builder
-                        .append(
-                            self.data().get_unchecked(i) | rhs.data().get_unchecked(i),
-                        )
-                        .unwrap();
+                    builder.append(self.data().get_unchecked(i) | rhs.data().get_unchecked(i)).unwrap();
                 }
             }
             Ok(builder.finish())
@@ -247,18 +214,14 @@ impl Not for &Buffer {
         // SIMD implementation if available
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
-            let mut result =
-                MutableBuffer::new(self.len()).with_bitset(self.len(), false);
+            let mut result = MutableBuffer::new(self.len()).with_bitset(self.len(), false);
             let lanes = u8x64::lanes();
             for i in (0..self.len()).step_by(lanes) {
                 unsafe {
                     let data = from_raw_parts(self.raw_data().offset(i as isize), lanes);
                     let data_simd = u8x64::from_slice_unaligned_unchecked(data);
                     let simd_result = !data_simd;
-                    let result_slice: &mut [u8] = from_raw_parts_mut(
-                        (result.data_mut().as_mut_ptr() as *mut u8).offset(i as isize),
-                        lanes,
-                    );
+                    let result_slice: &mut [u8] = from_raw_parts_mut((result.data_mut().as_mut_ptr() as *mut u8).offset(i as isize), lanes);
                     simd_result.write_to_slice_unaligned_unchecked(result_slice);
                 }
             }
@@ -296,11 +259,7 @@ impl MutableBuffer {
     pub fn new(capacity: usize) -> Self {
         let new_capacity = bit_util::round_upto_multiple_of_64(capacity);
         let ptr = memory::allocate_aligned(new_capacity).unwrap();
-        Self {
-            data: ptr,
-            len: 0,
-            capacity: new_capacity,
-        }
+        Self { data: ptr, len: 0, capacity: new_capacity }
     }
 
     /// Set the bits in the range of `[0, end)` to 0 (if `val` is false), or 1 (if `val`
@@ -359,8 +318,7 @@ impl MutableBuffer {
         } else {
             let new_capacity = bit_util::round_upto_multiple_of_64(new_len);
             if new_capacity < self.capacity {
-                let new_data =
-                    memory::reallocate(self.capacity, new_capacity, self.data)?;
+                let new_data = memory::reallocate(self.capacity, new_capacity, self.data)?;
                 self.data = new_data as *mut u8;
                 self.capacity = new_capacity;
             }
@@ -396,9 +354,7 @@ impl MutableBuffer {
 
     /// Returns the data stored in this buffer as a mutable slice.
     pub fn data_mut(&mut self) -> &mut [u8] {
-        unsafe {
-            ::std::slice::from_raw_parts_mut(self.raw_data() as *mut u8, self.len())
-        }
+        unsafe { ::std::slice::from_raw_parts_mut(self.raw_data() as *mut u8, self.len()) }
     }
 
     /// Returns a raw pointer for this buffer.
@@ -411,15 +367,9 @@ impl MutableBuffer {
 
     /// Freezes this buffer and return an immutable version of it.
     pub fn freeze(self) -> Buffer {
-        let buffer_data = BufferData {
-            ptr: self.data,
-            len: self.len,
-        };
+        let buffer_data = BufferData { ptr: self.data, len: self.len };
         ::std::mem::forget(self);
-        Buffer {
-            data: Arc::new(buffer_data),
-            offset: 0,
-        }
+        Buffer { data: Arc::new(buffer_data), offset: 0 }
     }
 }
 
@@ -540,9 +490,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "the offset of the new Buffer cannot exceed the existing length"
-    )]
+    #[should_panic(expected = "the offset of the new Buffer cannot exceed the existing length")]
     fn test_slice_offset_out_of_bound() {
         let buf = Buffer::from(&[2, 4, 6, 8, 10]);
         buf.slice(6);
@@ -681,8 +629,7 @@ mod tests {
     #[test]
     fn test_mutable_freeze() {
         let mut buf = MutableBuffer::new(1);
-        buf.write("aaaa bbbb cccc dddd".as_bytes())
-            .expect("write should be OK");
+        buf.write("aaaa bbbb cccc dddd".as_bytes()).expect("write should be OK");
         assert_eq!(19, buf.len());
         assert_eq!("aaaa bbbb cccc dddd".as_bytes(), buf.data());
 

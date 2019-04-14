@@ -24,11 +24,7 @@ use crate::error::Result;
 /// Applies a given binary operation, `op`, to two references to `Option<Bitmap>`'s.
 ///
 /// This function is useful when implementing operations on higher level arrays.
-pub(crate) fn apply_bin_op_to_option_bitmap<F>(
-    left: &Option<Bitmap>,
-    right: &Option<Bitmap>,
-    op: F,
-) -> Result<Option<Buffer>>
+pub(crate) fn apply_bin_op_to_option_bitmap<F>(left: &Option<Bitmap>, right: &Option<Bitmap>, op: F) -> Result<Option<Buffer>>
 where
     F: Fn(&Buffer, &Buffer) -> Result<Buffer>,
 {
@@ -50,34 +46,10 @@ mod tests {
 
     #[test]
     fn test_apply_bin_op_to_option_bitmap() {
-        assert_eq!(
-            Ok(None),
-            apply_bin_op_to_option_bitmap(&None, &None, |a, b| a & b)
-        );
-        assert_eq!(
-            Ok(Some(Buffer::from([0b01101010]))),
-            apply_bin_op_to_option_bitmap(
-                &Some(Bitmap::from(Buffer::from([0b01101010]))),
-                &None,
-                |a, b| a & b
-            )
-        );
-        assert_eq!(
-            Ok(Some(Buffer::from([0b01001110]))),
-            apply_bin_op_to_option_bitmap(
-                &None,
-                &Some(Bitmap::from(Buffer::from([0b01001110]))),
-                |a, b| a & b
-            )
-        );
-        assert_eq!(
-            Ok(Some(Buffer::from([0b01001010]))),
-            apply_bin_op_to_option_bitmap(
-                &Some(Bitmap::from(Buffer::from([0b01101010]))),
-                &Some(Bitmap::from(Buffer::from([0b01001110]))),
-                |a, b| a & b
-            )
-        );
+        assert_eq!(Ok(None), apply_bin_op_to_option_bitmap(&None, &None, |a, b| a & b));
+        assert_eq!(Ok(Some(Buffer::from([0b01101010]))), apply_bin_op_to_option_bitmap(&Some(Bitmap::from(Buffer::from([0b01101010]))), &None, |a, b| a & b));
+        assert_eq!(Ok(Some(Buffer::from([0b01001110]))), apply_bin_op_to_option_bitmap(&None, &Some(Bitmap::from(Buffer::from([0b01001110]))), |a, b| a & b));
+        assert_eq!(Ok(Some(Buffer::from([0b01001010]))), apply_bin_op_to_option_bitmap(&Some(Bitmap::from(Buffer::from([0b01101010]))), &Some(Bitmap::from(Buffer::from([0b01001110]))), |a, b| a & b));
     }
 
 }

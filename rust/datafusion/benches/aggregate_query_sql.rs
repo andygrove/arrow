@@ -64,11 +64,7 @@ fn create_context() -> Rc<RefCell<ExecutionContext>> {
     let testdata = env::var("ARROW_TEST_DATA").expect("ARROW_TEST_DATA not defined");
 
     // create CSV data source
-    let csv = CsvFile::new(
-        &format!("{}/csv/aggregate_test_100.csv", testdata),
-        &schema,
-        true,
-    );
+    let csv = CsvFile::new(&format!("{}/csv/aggregate_test_100.csv", testdata), &schema, true);
 
     let mem_table = MemTable::load(&csv).unwrap();
 

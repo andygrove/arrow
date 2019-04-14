@@ -98,11 +98,7 @@ impl RandGen<ByteArrayType> for ByteArrayType {
 impl RandGen<FixedLenByteArrayType> for FixedLenByteArrayType {
     fn gen(len: i32) -> ByteArray {
         let mut rng = thread_rng();
-        let value_len = if len < 0 {
-            rng.gen_range::<usize>(0, 128)
-        } else {
-            len as usize
-        };
+        let value_len = if len < 0 { rng.gen_range::<usize>(0, 128) } else { len as usize };
         let value = random_bytes(value_len);
         ByteArray::from(value)
     }

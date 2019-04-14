@@ -114,9 +114,7 @@ impl ByteArray {
 
 impl From<Vec<u8>> for ByteArray {
     fn from(buf: Vec<u8>) -> ByteArray {
-        Self {
-            data: Some(ByteBufferPtr::new(buf)),
-        }
+        Self { data: Some(ByteBufferPtr::new(buf)) }
     }
 }
 
@@ -124,9 +122,7 @@ impl<'a> From<&'a str> for ByteArray {
     fn from(s: &'a str) -> ByteArray {
         let mut v = Vec::new();
         v.extend_from_slice(s.as_bytes());
-        Self {
-            data: Some(ByteBufferPtr::new(v)),
-        }
+        Self { data: Some(ByteBufferPtr::new(v)) }
     }
 }
 
@@ -138,9 +134,7 @@ impl From<ByteBufferPtr> for ByteArray {
 
 impl From<ByteBuffer> for ByteArray {
     fn from(mut buf: ByteBuffer) -> ByteArray {
-        Self {
-            data: Some(buf.consume()),
-        }
+        Self { data: Some(buf.consume()) }
     }
 }
 
@@ -168,23 +162,11 @@ impl PartialEq for ByteArray {
 #[derive(Clone, Debug)]
 pub enum Decimal {
     /// Decimal backed by `i32`.
-    Int32 {
-        value: [u8; 4],
-        precision: i32,
-        scale: i32,
-    },
+    Int32 { value: [u8; 4], precision: i32, scale: i32 },
     /// Decimal backed by `i64`.
-    Int64 {
-        value: [u8; 8],
-        precision: i32,
-        scale: i32,
-    },
+    Int64 { value: [u8; 8], precision: i32, scale: i32 },
     /// Decimal backed by byte array.
-    Bytes {
-        value: ByteArray,
-        precision: i32,
-        scale: i32,
-    },
+    Bytes { value: ByteArray, precision: i32, scale: i32 },
 }
 
 impl Decimal {
@@ -192,31 +174,19 @@ impl Decimal {
     pub fn from_i32(value: i32, precision: i32, scale: i32) -> Self {
         let mut bytes = [0; 4];
         BigEndian::write_i32(&mut bytes, value);
-        Decimal::Int32 {
-            value: bytes,
-            precision,
-            scale,
-        }
+        Decimal::Int32 { value: bytes, precision, scale }
     }
 
     /// Creates new decimal value from `i64`.
     pub fn from_i64(value: i64, precision: i32, scale: i32) -> Self {
         let mut bytes = [0; 8];
         BigEndian::write_i64(&mut bytes, value);
-        Decimal::Int64 {
-            value: bytes,
-            precision,
-            scale,
-        }
+        Decimal::Int64 { value: bytes, precision, scale }
     }
 
     /// Creates new decimal value from `ByteArray`.
     pub fn from_bytes(value: ByteArray, precision: i32, scale: i32) -> Self {
-        Decimal::Bytes {
-            value,
-            precision,
-            scale,
-        }
+        Decimal::Bytes { value, precision, scale }
     }
 
     /// Returns bytes of unscaled value.
@@ -255,9 +225,7 @@ impl Default for Decimal {
 
 impl PartialEq for Decimal {
     fn eq(&self, other: &Decimal) -> bool {
-        self.precision() == other.precision()
-            && self.scale() == other.scale()
-            && self.data() == other.data()
+        self.precision() == other.precision() && self.scale() == other.scale() && self.data() == other.data()
     }
 }
 
@@ -271,12 +239,7 @@ macro_rules! gen_as_bytes {
     ($source_ty:ident) => {
         impl AsBytes for $source_ty {
             fn as_bytes(&self) -> &[u8] {
-                unsafe {
-                    ::std::slice::from_raw_parts(
-                        self as *const $source_ty as *const u8,
-                        ::std::mem::size_of::<$source_ty>(),
-                    )
-                }
+                unsafe { ::std::slice::from_raw_parts(self as *const $source_ty as *const u8, ::std::mem::size_of::<$source_ty>()) }
             }
         }
     };
@@ -292,9 +255,7 @@ gen_as_bytes!(f64);
 
 impl AsBytes for Int96 {
     fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            ::std::slice::from_raw_parts(self.data() as *const [u32] as *const u8, 12)
-        }
+        unsafe { ::std::slice::from_raw_parts(self.data() as *const [u32] as *const u8, 12) }
     }
 }
 
@@ -331,11 +292,7 @@ impl AsBytes for str {
 /// Contains the Parquet physical type information as well as the Rust primitive type
 /// presentation.
 pub trait DataType: 'static {
-    type T: ::std::cmp::PartialEq
-        + ::std::fmt::Debug
-        + ::std::default::Default
-        + ::std::clone::Clone
-        + AsBytes;
+    type T: ::std::cmp::PartialEq + ::std::fmt::Debug + ::std::default::Default + ::std::clone::Clone + AsBytes;
 
     /// Returns Parquet physical type.
     fn get_physical_type() -> Type;
@@ -370,18 +327,8 @@ make_type!(Int64Type, Type::INT64, i64, 8);
 make_type!(Int96Type, Type::INT96, Int96, mem::size_of::<Int96>());
 make_type!(FloatType, Type::FLOAT, f32, 4);
 make_type!(DoubleType, Type::DOUBLE, f64, 8);
-make_type!(
-    ByteArrayType,
-    Type::BYTE_ARRAY,
-    ByteArray,
-    mem::size_of::<ByteArray>()
-);
-make_type!(
-    FixedLenByteArrayType,
-    Type::FIXED_LEN_BYTE_ARRAY,
-    ByteArray,
-    mem::size_of::<ByteArray>()
-);
+make_type!(ByteArrayType, Type::BYTE_ARRAY, ByteArray, mem::size_of::<ByteArray>());
+make_type!(FixedLenByteArrayType, Type::FIXED_LEN_BYTE_ARRAY, ByteArray, mem::size_of::<ByteArray>());
 
 #[cfg(test)]
 mod tests {
@@ -398,21 +345,12 @@ mod tests {
         assert_eq!(i32::min_value().as_bytes(), &[0, 0, 0, 128]);
         assert_eq!((7 as i64).as_bytes(), &[7, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!((555 as i64).as_bytes(), &[43, 2, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(
-            (i64::max_value()).as_bytes(),
-            &[255, 255, 255, 255, 255, 255, 255, 127]
-        );
+        assert_eq!((i64::max_value()).as_bytes(), &[255, 255, 255, 255, 255, 255, 255, 127]);
         assert_eq!((i64::min_value()).as_bytes(), &[0, 0, 0, 0, 0, 0, 0, 128]);
         assert_eq!((3.14 as f32).as_bytes(), &[195, 245, 72, 64]);
-        assert_eq!(
-            (3.14 as f64).as_bytes(),
-            &[31, 133, 235, 81, 184, 30, 9, 64]
-        );
+        assert_eq!((3.14 as f64).as_bytes(), &[31, 133, 235, 81, 184, 30, 9, 64]);
         assert_eq!("hello".as_bytes(), &[b'h', b'e', b'l', b'l', b'o']);
-        assert_eq!(
-            Vec::from("hello".as_bytes()).as_bytes(),
-            &[b'h', b'e', b'l', b'l', b'o']
-        );
+        assert_eq!(Vec::from("hello".as_bytes()).as_bytes(), &[b'h', b'e', b'l', b'l', b'o']);
 
         // Test Int96
         let i96 = Int96::from(vec![1, 2, 3]);
@@ -433,23 +371,14 @@ mod tests {
 
     #[test]
     fn test_int96_from() {
-        assert_eq!(
-            Int96::from(vec![1, 12345, 1234567890]).data(),
-            &[1, 12345, 1234567890]
-        );
+        assert_eq!(Int96::from(vec![1, 12345, 1234567890]).data(), &[1, 12345, 1234567890]);
     }
 
     #[test]
     fn test_byte_array_from() {
-        assert_eq!(
-            ByteArray::from(vec![b'A', b'B', b'C']).data(),
-            &[b'A', b'B', b'C']
-        );
+        assert_eq!(ByteArray::from(vec![b'A', b'B', b'C']).data(), &[b'A', b'B', b'C']);
         assert_eq!(ByteArray::from("ABC").data(), &[b'A', b'B', b'C']);
-        assert_eq!(
-            ByteArray::from(ByteBufferPtr::new(vec![1u8, 2u8, 3u8, 4u8, 5u8])).data(),
-            &[1u8, 2u8, 3u8, 4u8, 5u8]
-        );
+        assert_eq!(ByteArray::from(ByteBufferPtr::new(vec![1u8, 2u8, 3u8, 4u8, 5u8])).data(), &[1u8, 2u8, 3u8, 4u8, 5u8]);
         let mut buf = ByteBuffer::new();
         buf.set_data(vec![6u8, 7u8, 8u8, 9u8, 10u8]);
         assert_eq!(ByteArray::from(buf).data(), &[6u8, 7u8, 8u8, 9u8, 10u8]);
@@ -459,10 +388,7 @@ mod tests {
     fn test_decimal_partial_eq() {
         assert_eq!(Decimal::default(), Decimal::from_i32(0, 0, 0));
         assert_eq!(Decimal::from_i32(222, 5, 2), Decimal::from_i32(222, 5, 2));
-        assert_eq!(
-            Decimal::from_bytes(ByteArray::from(vec![0, 0, 0, 3]), 5, 2),
-            Decimal::from_i32(3, 5, 2)
-        );
+        assert_eq!(Decimal::from_bytes(ByteArray::from(vec![0, 0, 0, 3]), 5, 2), Decimal::from_i32(3, 5, 2));
 
         assert!(Decimal::from_i32(222, 5, 2) != Decimal::from_i32(111, 5, 2));
         assert!(Decimal::from_i32(222, 5, 2) != Decimal::from_i32(222, 6, 2));

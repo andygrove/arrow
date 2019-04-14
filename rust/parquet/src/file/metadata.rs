@@ -40,10 +40,7 @@ use parquet_format::{ColumnChunk, ColumnMetaData, RowGroup};
 use crate::basic::{ColumnOrder, Compression, Encoding, Type};
 use crate::errors::{ParquetError, Result};
 use crate::file::statistics::{self, Statistics};
-use crate::schema::types::{
-    ColumnDescPtr, ColumnDescriptor, ColumnPath, SchemaDescPtr, SchemaDescriptor,
-    Type as SchemaType, TypePtr,
-};
+use crate::schema::types::{ColumnDescPtr, ColumnDescriptor, ColumnPath, SchemaDescPtr, SchemaDescriptor, Type as SchemaType, TypePtr};
 
 /// Reference counted pointer for [`ParquetMetaData`].
 pub type ParquetMetaDataPtr = Rc<ParquetMetaData>;
@@ -57,10 +54,7 @@ pub struct ParquetMetaData {
 impl ParquetMetaData {
     /// Creates Parquet metadata from file metadata and a list of row group metadata `Rc`s
     /// for each available row group.
-    pub fn new(
-        file_metadata: FileMetaData,
-        row_group_ptrs: Vec<RowGroupMetaDataPtr>,
-    ) -> Self {
+    pub fn new(file_metadata: FileMetaData, row_group_ptrs: Vec<RowGroupMetaDataPtr>) -> Self {
         ParquetMetaData {
             file_metadata: Rc::new(file_metadata),
             row_groups: row_group_ptrs,
@@ -104,14 +98,7 @@ pub struct FileMetaData {
 
 impl FileMetaData {
     /// Creates new file metadata.
-    pub fn new(
-        version: i32,
-        num_rows: i64,
-        created_by: Option<String>,
-        schema: TypePtr,
-        schema_descr: SchemaDescPtr,
-        column_orders: Option<Vec<ColumnOrder>>,
-    ) -> Self {
+    pub fn new(version: i32, num_rows: i64, created_by: Option<String>, schema: TypePtr, schema_descr: SchemaDescPtr, column_orders: Option<Vec<ColumnOrder>>) -> Self {
         FileMetaData {
             version,
             num_rows,
@@ -173,10 +160,7 @@ impl FileMetaData {
     /// Returns column order for `i`th column in this file.
     /// If column orders are not available, returns undefined (legacy) column order.
     pub fn column_order(&self, i: usize) -> ColumnOrder {
-        self.column_orders
-            .as_ref()
-            .map(|data| data[i])
-            .unwrap_or(ColumnOrder::UNDEFINED)
+        self.column_orders.as_ref().map(|data| data[i]).unwrap_or(ColumnOrder::UNDEFINED)
     }
 }
 
@@ -233,10 +217,7 @@ impl RowGroupMetaData {
     }
 
     /// Method to convert from Thrift.
-    pub fn from_thrift(
-        schema_descr: SchemaDescPtr,
-        mut rg: RowGroup,
-    ) -> Result<RowGroupMetaData> {
+    pub fn from_thrift(schema_descr: SchemaDescPtr, mut rg: RowGroup) -> Result<RowGroupMetaData> {
         assert_eq!(schema_descr.num_columns(), rg.columns.len());
         let total_byte_size = rg.total_byte_size;
         let num_rows = rg.num_rows;
@@ -245,12 +226,7 @@ impl RowGroupMetaData {
             let cc = ColumnChunkMetaData::from_thrift(d.clone(), c)?;
             columns.push(Rc::new(cc));
         }
-        Ok(RowGroupMetaData {
-            columns,
-            num_rows,
-            total_byte_size,
-            schema_descr,
-        })
+        Ok(RowGroupMetaData { columns, num_rows, total_byte_size, schema_descr })
     }
 
     /// Method to convert to Thrift.
@@ -304,11 +280,7 @@ impl RowGroupMetaDataBuilder {
     /// Builds row group metadata.
     pub fn build(self) -> Result<RowGroupMetaData> {
         if self.schema_descr.num_columns() != self.columns.len() {
-            return Err(general_err!(
-                "Column length mismatch: {} != {}",
-                self.schema_descr.num_columns(),
-                self.columns.len()
-            ));
+            return Err(general_err!("Column length mismatch: {} != {}", self.schema_descr.num_columns(), self.columns.len()));
         }
 
         Ok(RowGroupMetaData {
@@ -445,11 +417,7 @@ impl ColumnChunkMetaData {
         let mut col_metadata: ColumnMetaData = cc.meta_data.unwrap();
         let column_type = Type::from(col_metadata.type_);
         let column_path = ColumnPath::new(col_metadata.path_in_schema);
-        let encodings = col_metadata
-            .encodings
-            .drain(0..)
-            .map(Encoding::from)
-            .collect();
+        let encodings = col_metadata.encodings.drain(0..).map(Encoding::from).collect();
         let compression = Compression::from(col_metadata.codec);
         let file_path = cc.file_path;
         let file_offset = cc.file_offset;
@@ -644,18 +612,10 @@ mod tests {
             let column = ColumnChunkMetaData::builder(ptr.clone()).build().unwrap();
             columns.push(Rc::new(column));
         }
-        let row_group_meta = RowGroupMetaData::builder(schema_descr.clone())
-            .set_num_rows(1000)
-            .set_total_byte_size(2000)
-            .set_column_metadata(columns)
-            .build()
-            .unwrap();
+        let row_group_meta = RowGroupMetaData::builder(schema_descr.clone()).set_num_rows(1000).set_total_byte_size(2000).set_column_metadata(columns).build().unwrap();
 
         let row_group_exp = row_group_meta.to_thrift();
-        let row_group_res =
-            RowGroupMetaData::from_thrift(schema_descr.clone(), row_group_exp.clone())
-                .unwrap()
-                .to_thrift();
+        let row_group_res = RowGroupMetaData::from_thrift(schema_descr.clone(), row_group_exp.clone()).unwrap().to_thrift();
 
         assert_eq!(row_group_res, row_group_exp);
     }
@@ -668,10 +628,7 @@ mod tests {
 
         assert!(row_group_meta.is_err());
         if let Err(e) = row_group_meta {
-            assert_eq!(
-                e.to_string(),
-                "Parquet error: Column length mismatch: 2 != 0"
-            );
+            assert_eq!(e.to_string(), "Parquet error: Column length mismatch: 2 != 0");
         }
     }
 
@@ -694,10 +651,7 @@ mod tests {
 
         let col_chunk_exp = col_metadata.to_thrift();
 
-        let col_chunk_res =
-            ColumnChunkMetaData::from_thrift(column_descr.clone(), col_chunk_exp.clone())
-                .unwrap()
-                .to_thrift();
+        let col_chunk_res = ColumnChunkMetaData::from_thrift(column_descr.clone(), col_chunk_exp.clone()).unwrap().to_thrift();
 
         assert_eq!(col_chunk_res, col_chunk_exp);
     }
@@ -706,15 +660,10 @@ mod tests {
     fn test_column_chunk_metadata_thrift_conversion_empty() {
         let column_descr = get_test_schema_descr().column(0);
 
-        let col_metadata = ColumnChunkMetaData::builder(column_descr.clone())
-            .build()
-            .unwrap();
+        let col_metadata = ColumnChunkMetaData::builder(column_descr.clone()).build().unwrap();
 
         let col_chunk_exp = col_metadata.to_thrift();
-        let col_chunk_res =
-            ColumnChunkMetaData::from_thrift(column_descr.clone(), col_chunk_exp.clone())
-                .unwrap()
-                .to_thrift();
+        let col_chunk_res = ColumnChunkMetaData::from_thrift(column_descr.clone(), col_chunk_exp.clone()).unwrap().to_thrift();
 
         assert_eq!(col_chunk_res, col_chunk_exp);
     }
@@ -722,18 +671,7 @@ mod tests {
     /// Returns sample schema descriptor so we can create column metadata.
     fn get_test_schema_descr() -> SchemaDescPtr {
         let schema = SchemaType::group_type_builder("schema")
-            .with_fields(&mut vec![
-                Rc::new(
-                    SchemaType::primitive_type_builder("a", Type::INT32)
-                        .build()
-                        .unwrap(),
-                ),
-                Rc::new(
-                    SchemaType::primitive_type_builder("b", Type::INT32)
-                        .build()
-                        .unwrap(),
-                ),
-            ])
+            .with_fields(&mut vec![Rc::new(SchemaType::primitive_type_builder("a", Type::INT32).build().unwrap()), Rc::new(SchemaType::primitive_type_builder("b", Type::INT32).build().unwrap())])
             .build()
             .unwrap();
 

@@ -75,25 +75,15 @@ fn limit_no_simd(size: usize, max: usize) {
 }
 
 fn add_benchmark(c: &mut Criterion) {
-    c.bench_function("add 512", |b| {
-        b.iter(|| bin_op_no_simd(512, |a, b| Ok(a + b)))
-    });
+    c.bench_function("add 512", |b| b.iter(|| bin_op_no_simd(512, |a, b| Ok(a + b))));
     c.bench_function("add 512 simd", |b| b.iter(|| add_simd(512)));
-    c.bench_function("subtract 512", |b| {
-        b.iter(|| bin_op_no_simd(512, |a, b| Ok(a - b)))
-    });
+    c.bench_function("subtract 512", |b| b.iter(|| bin_op_no_simd(512, |a, b| Ok(a - b))));
     c.bench_function("subtract 512 simd", |b| b.iter(|| subtract_simd(512)));
-    c.bench_function("multiply 512", |b| {
-        b.iter(|| bin_op_no_simd(512, |a, b| Ok(a * b)))
-    });
+    c.bench_function("multiply 512", |b| b.iter(|| bin_op_no_simd(512, |a, b| Ok(a * b))));
     c.bench_function("multiply 512 simd", |b| b.iter(|| multiply_simd(512)));
     c.bench_function("sum 512 no simd", |b| b.iter(|| sum_no_simd(512)));
-    c.bench_function("limit 512, 256 no simd", |b| {
-        b.iter(|| limit_no_simd(512, 256))
-    });
-    c.bench_function("limit 512, 512 no simd", |b| {
-        b.iter(|| limit_no_simd(512, 512))
-    });
+    c.bench_function("limit 512, 256 no simd", |b| b.iter(|| limit_no_simd(512, 256)));
+    c.bench_function("limit 512, 512 no simd", |b| b.iter(|| limit_no_simd(512, 512)));
 }
 
 criterion_group!(benches, add_benchmark);

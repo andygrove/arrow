@@ -29,38 +29,20 @@ fn main() -> Result<()> {
     // define schema
     let schema = Schema::new(vec![
         Field::new("id", DataType::Int32, false),
-        Field::new(
-            "nested",
-            DataType::Struct(vec![
-                Field::new("a", DataType::Utf8, false),
-                Field::new("b", DataType::Float64, false),
-                Field::new("c", DataType::Float64, false),
-            ]),
-            false,
-        ),
+        Field::new("nested", DataType::Struct(vec![Field::new("a", DataType::Utf8, false), Field::new("b", DataType::Float64, false), Field::new("c", DataType::Float64, false)]), false),
     ]);
 
     // create some data
     let id = Int32Array::from(vec![1, 2, 3, 4, 5]);
 
     let nested = StructArray::from(vec![
-        (
-            Field::new("a", DataType::Utf8, false),
-            Arc::new(BinaryArray::from(vec!["a", "b", "c", "d", "e"])) as Arc<Array>,
-        ),
-        (
-            Field::new("b", DataType::Float64, false),
-            Arc::new(Float64Array::from(vec![1.1, 2.2, 3.3, 4.4, 5.5])),
-        ),
-        (
-            Field::new("c", DataType::Float64, false),
-            Arc::new(Float64Array::from(vec![2.2, 3.3, 4.4, 5.5, 6.6])),
-        ),
+        (Field::new("a", DataType::Utf8, false), Arc::new(BinaryArray::from(vec!["a", "b", "c", "d", "e"])) as Arc<Array>),
+        (Field::new("b", DataType::Float64, false), Arc::new(Float64Array::from(vec![1.1, 2.2, 3.3, 4.4, 5.5]))),
+        (Field::new("c", DataType::Float64, false), Arc::new(Float64Array::from(vec![2.2, 3.3, 4.4, 5.5, 6.6]))),
     ]);
 
     // build a record batch
-    let batch =
-        RecordBatch::try_new(Arc::new(schema), vec![Arc::new(id), Arc::new(nested)])?;
+    let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(id), Arc::new(nested)])?;
 
     Ok(process(&batch))
 }
@@ -68,27 +50,12 @@ fn main() -> Result<()> {
 /// Create a new batch by performing a projection of id, nested.c
 fn process(batch: &RecordBatch) {
     let id = batch.column(0);
-    let nested = batch
-        .column(1)
-        .as_any()
-        .downcast_ref::<StructArray>()
-        .unwrap();
+    let nested = batch.column(1).as_any().downcast_ref::<StructArray>().unwrap();
 
-    let _nested_b = nested
-        .column(1)
-        .as_any()
-        .downcast_ref::<Float64Array>()
-        .unwrap();
-    let nested_c: &Float64Array = nested
-        .column(2)
-        .as_any()
-        .downcast_ref::<Float64Array>()
-        .unwrap();
+    let _nested_b = nested.column(1).as_any().downcast_ref::<Float64Array>().unwrap();
+    let nested_c: &Float64Array = nested.column(2).as_any().downcast_ref::<Float64Array>().unwrap();
 
-    let projected_schema = Schema::new(vec![
-        Field::new("id", DataType::Int32, false),
-        Field::new("sum", DataType::Float64, false),
-    ]);
+    let projected_schema = Schema::new(vec![Field::new("id", DataType::Int32, false), Field::new("sum", DataType::Float64, false)]);
 
     let _ = RecordBatch::try_new(
         Arc::new(projected_schema),

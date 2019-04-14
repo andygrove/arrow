@@ -46,10 +46,7 @@ impl ParquetTable {
         let file = File::open(filename)?;
         let parquet_file = ParquetFile::open(file, None, 0)?;
         let schema = parquet_file.projection_schema.clone();
-        Ok(Self {
-            filename: filename.to_string(),
-            schema,
-        })
+        Ok(Self { filename: filename.to_string(), schema })
     }
 }
 
@@ -58,11 +55,7 @@ impl TableProvider for ParquetTable {
         &self.schema
     }
 
-    fn scan(
-        &self,
-        projection: &Option<Vec<usize>>,
-        batch_size: usize,
-    ) -> Result<Vec<ScanResult>> {
+    fn scan(&self, projection: &Option<Vec<usize>>, batch_size: usize) -> Result<Vec<ScanResult>> {
         let file = File::open(self.filename.clone())?;
         let parquet_file = ParquetFile::open(file, projection.clone(), batch_size)?;
         Ok(vec![Arc::new(Mutex::new(parquet_file))])
@@ -84,22 +77,14 @@ pub struct ParquetFile {
 
 macro_rules! read_binary_column {
     ($SELF:ident, $R:ident, $INDEX:expr) => {{
-        let mut read_buffer: Vec<ByteArray> =
-            vec![ByteArray::default(); $SELF.batch_size];
+        let mut read_buffer: Vec<ByteArray> = vec![ByteArray::default(); $SELF.batch_size];
         let mut def_levels: Vec<i16> = vec![0; $SELF.batch_size];
-        let (_, levels_read) = $R.read_batch(
-            $SELF.batch_size,
-            Some(&mut def_levels),
-            None,
-            &mut read_buffer,
-        )?;
+        let (_, levels_read) = $R.read_batch($SELF.batch_size, Some(&mut def_levels), None, &mut read_buffer)?;
         let mut builder = BinaryBuilder::new(levels_read);
         let mut value_index = 0;
         for i in 0..levels_read {
             if def_levels[i] > 0 {
-                builder.append_string(
-                    &String::from_utf8(read_buffer[value_index].data().to_vec()).unwrap(),
-                )?;
+                builder.append_string(&String::from_utf8(read_buffer[value_index].data().to_vec()).unwrap())?;
                 value_index += 1;
             } else {
                 builder.append_null()?;
@@ -113,11 +98,7 @@ trait ArrowReader<T>
 where
     T: ArrowPrimitiveType,
 {
-    fn read(
-        &mut self,
-        batch_size: usize,
-        is_nullable: bool,
-    ) -> Result<Arc<PrimitiveArray<T>>>;
+    fn read(&mut self, batch_size: usize, is_nullable: bool) -> Result<Arc<PrimitiveArray<T>>>;
 }
 
 impl<A, P> ArrowReader<A> for ColumnReaderImpl<P>
@@ -127,26 +108,16 @@ where
     P::T: std::convert::From<A::Native>,
     A::Native: std::convert::From<P::T>,
 {
-    fn read(
-        &mut self,
-        batch_size: usize,
-        is_nullable: bool,
-    ) -> Result<Arc<PrimitiveArray<A>>> {
+    fn read(&mut self, batch_size: usize, is_nullable: bool) -> Result<Arc<PrimitiveArray<A>>> {
         // create read buffer
         let mut read_buffer: Vec<P::T> = vec![A::default_value().into(); batch_size];
 
         if is_nullable {
             let mut def_levels: Vec<i16> = vec![0; batch_size];
 
-            let (values_read, levels_read) = self.read_batch(
-                batch_size,
-                Some(&mut def_levels),
-                None,
-                &mut read_buffer,
-            )?;
+            let (values_read, levels_read) = self.read_batch(batch_size, Some(&mut def_levels), None, &mut read_buffer)?;
             let mut builder = PrimitiveBuilder::<A>::new(levels_read);
-            let converted_buffer: Vec<A::Native> =
-                read_buffer.into_iter().map(|v| v.into()).collect();
+            let converted_buffer: Vec<A::Native> = read_buffer.into_iter().map(|v| v.into()).collect();
             if values_read == levels_read {
                 builder.append_slice(&converted_buffer[0..values_read])?;
             } else {
@@ -162,12 +133,10 @@ where
             }
             Ok(Arc::new(builder.finish()))
         } else {
-            let (values_read, _) =
-                self.read_batch(batch_size, None, None, &mut read_buffer)?;
+            let (values_read, _) = self.read_batch(batch_size, None, None, &mut read_buffer)?;
 
             let mut builder = PrimitiveBuilder::<A>::new(values_read);
-            let converted_buffer: Vec<A::Native> =
-                read_buffer.into_iter().map(|v| v.into()).collect();
+            let converted_buffer: Vec<A::Native> = read_buffer.into_iter().map(|v| v.into()).collect();
             builder.append_slice(&converted_buffer[0..values_read])?;
             Ok(Arc::new(builder.finish()))
         }
@@ -176,30 +145,21 @@ where
 
 impl ParquetFile {
     /// Read parquet data from a `File`
-    pub fn open(
-        file: File,
-        projection: Option<Vec<usize>>,
-        batch_size: usize,
-    ) -> Result<Self> {
+    pub fn open(file: File, projection: Option<Vec<usize>>, batch_size: usize) -> Result<Self> {
         let reader = SerializedFileReader::new(file)?;
 
         let metadata = reader.metadata();
-        let schema =
-            parquet_to_arrow_schema(metadata.file_metadata().schema_descr_ptr())?;
+        let schema = parquet_to_arrow_schema(metadata.file_metadata().schema_descr_ptr())?;
 
         // even if we aren't referencing structs or lists in our projection, column reader
         // indexes will be off until we have support for nested schemas
         for i in 0..schema.fields().len() {
             match schema.field(i).data_type() {
                 DataType::List(_) => {
-                    return Err(ExecutionError::NotImplemented(
-                        "Parquet datasource does not support LIST".to_string(),
-                    ));
+                    return Err(ExecutionError::NotImplemented("Parquet datasource does not support LIST".to_string()));
                 }
                 DataType::Struct(_) => {
-                    return Err(ExecutionError::NotImplemented(
-                        "Parquet datasource does not support STRUCT".to_string(),
-                    ));
+                    return Err(ExecutionError::NotImplemented("Parquet datasource does not support STRUCT".to_string()));
                 }
                 _ => {}
             }
@@ -237,8 +197,7 @@ impl ParquetFile {
             self.column_readers = Vec::with_capacity(self.projection.len());
 
             for i in 0..self.projection.len() {
-                self.column_readers
-                    .push(reader.get_column_reader(self.projection[i])?);
+                self.column_readers.push(reader.get_column_reader(self.projection[i])?);
             }
 
             self.current_row_group = Some(reader);
@@ -246,9 +205,7 @@ impl ParquetFile {
 
             Ok(())
         } else {
-            Err(ExecutionError::General(
-                "Attempt to read past final row group".to_string(),
-            ))
+            Err(ExecutionError::General("Attempt to read past final row group".to_string()))
         }
     }
 
@@ -260,96 +217,31 @@ impl ParquetFile {
                     let dt = self.schema().field(i).data_type().clone();
                     let is_nullable = self.schema().field(i).is_nullable();
                     let array: Arc<Array> = match self.column_readers[i] {
-                        ColumnReader::BoolColumnReader(ref mut r) => {
-                            ArrowReader::<BooleanType>::read(
-                                r,
-                                self.batch_size,
-                                is_nullable,
-                            )?
-                        }
+                        ColumnReader::BoolColumnReader(ref mut r) => ArrowReader::<BooleanType>::read(r, self.batch_size, is_nullable)?,
                         ColumnReader::Int32ColumnReader(ref mut r) => match dt {
-                            DataType::Date32(DateUnit::Day) => {
-                                ArrowReader::<Date32Type>::read(
-                                    r,
-                                    self.batch_size,
-                                    is_nullable,
-                                )?
-                            }
-                            DataType::Time32(TimeUnit::Millisecond) => {
-                                ArrowReader::<Time32MillisecondType>::read(
-                                    r,
-                                    self.batch_size,
-                                    is_nullable,
-                                )?
-                            }
-                            _ => ArrowReader::<Int32Type>::read(
-                                r,
-                                self.batch_size,
-                                is_nullable,
-                            )?,
+                            DataType::Date32(DateUnit::Day) => ArrowReader::<Date32Type>::read(r, self.batch_size, is_nullable)?,
+                            DataType::Time32(TimeUnit::Millisecond) => ArrowReader::<Time32MillisecondType>::read(r, self.batch_size, is_nullable)?,
+                            _ => ArrowReader::<Int32Type>::read(r, self.batch_size, is_nullable)?,
                         },
                         ColumnReader::Int64ColumnReader(ref mut r) => match dt {
-                            DataType::Time64(TimeUnit::Microsecond) => {
-                                ArrowReader::<Time64MicrosecondType>::read(
-                                    r,
-                                    self.batch_size,
-                                    is_nullable,
-                                )?
-                            }
-                            DataType::Time64(TimeUnit::Nanosecond) => {
-                                ArrowReader::<Time64NanosecondType>::read(
-                                    r,
-                                    self.batch_size,
-                                    is_nullable,
-                                )?
-                            }
-                            DataType::Timestamp(TimeUnit::Millisecond) => {
-                                ArrowReader::<TimestampMillisecondType>::read(
-                                    r,
-                                    self.batch_size,
-                                    is_nullable,
-                                )?
-                            }
-                            DataType::Timestamp(TimeUnit::Microsecond) => {
-                                ArrowReader::<TimestampMicrosecondType>::read(
-                                    r,
-                                    self.batch_size,
-                                    is_nullable,
-                                )?
-                            }
-                            DataType::Timestamp(TimeUnit::Nanosecond) => {
-                                ArrowReader::<TimestampMicrosecondType>::read(
-                                    r,
-                                    self.batch_size,
-                                    is_nullable,
-                                )?
-                            }
-                            _ => ArrowReader::<Int64Type>::read(
-                                r,
-                                self.batch_size,
-                                is_nullable,
-                            )?,
+                            DataType::Time64(TimeUnit::Microsecond) => ArrowReader::<Time64MicrosecondType>::read(r, self.batch_size, is_nullable)?,
+                            DataType::Time64(TimeUnit::Nanosecond) => ArrowReader::<Time64NanosecondType>::read(r, self.batch_size, is_nullable)?,
+                            DataType::Timestamp(TimeUnit::Millisecond) => ArrowReader::<TimestampMillisecondType>::read(r, self.batch_size, is_nullable)?,
+                            DataType::Timestamp(TimeUnit::Microsecond) => ArrowReader::<TimestampMicrosecondType>::read(r, self.batch_size, is_nullable)?,
+                            DataType::Timestamp(TimeUnit::Nanosecond) => ArrowReader::<TimestampMicrosecondType>::read(r, self.batch_size, is_nullable)?,
+                            _ => ArrowReader::<Int64Type>::read(r, self.batch_size, is_nullable)?,
                         },
                         ColumnReader::Int96ColumnReader(ref mut r) => {
-                            let mut read_buffer: Vec<Int96> =
-                                vec![Int96::new(); self.batch_size];
+                            let mut read_buffer: Vec<Int96> = vec![Int96::new(); self.batch_size];
 
                             let mut def_levels: Vec<i16> = vec![0; self.batch_size];
-                            let (_, levels_read) = r.read_batch(
-                                self.batch_size,
-                                Some(&mut def_levels),
-                                None,
-                                &mut read_buffer,
-                            )?;
+                            let (_, levels_read) = r.read_batch(self.batch_size, Some(&mut def_levels), None, &mut read_buffer)?;
 
-                            let mut builder =
-                                TimestampNanosecondBuilder::new(levels_read);
+                            let mut builder = TimestampNanosecondBuilder::new(levels_read);
                             let mut value_index = 0;
                             for i in 0..levels_read {
                                 if def_levels[i] > 0 {
-                                    builder.append_value(convert_int96_timestamp(
-                                        read_buffer[value_index].data(),
-                                    ))?;
+                                    builder.append_value(convert_int96_timestamp(read_buffer[value_index].data()))?;
                                     value_index += 1;
                                 } else {
                                     builder.append_null()?;
@@ -357,26 +249,10 @@ impl ParquetFile {
                             }
                             Arc::new(builder.finish())
                         }
-                        ColumnReader::FloatColumnReader(ref mut r) => {
-                            ArrowReader::<Float32Type>::read(
-                                r,
-                                self.batch_size,
-                                is_nullable,
-                            )?
-                        }
-                        ColumnReader::DoubleColumnReader(ref mut r) => {
-                            ArrowReader::<Float64Type>::read(
-                                r,
-                                self.batch_size,
-                                is_nullable,
-                            )?
-                        }
-                        ColumnReader::FixedLenByteArrayColumnReader(ref mut r) => {
-                            read_binary_column!(self, r, i)
-                        }
-                        ColumnReader::ByteArrayColumnReader(ref mut r) => {
-                            read_binary_column!(self, r, i)
-                        }
+                        ColumnReader::FloatColumnReader(ref mut r) => ArrowReader::<Float32Type>::read(r, self.batch_size, is_nullable)?,
+                        ColumnReader::DoubleColumnReader(ref mut r) => ArrowReader::<Float64Type>::read(r, self.batch_size, is_nullable)?,
+                        ColumnReader::FixedLenByteArrayColumnReader(ref mut r) => read_binary_column!(self, r, i),
+                        ColumnReader::ByteArrayColumnReader(ref mut r) => read_binary_column!(self, r, i),
                     };
 
                     batch.push(array);
@@ -385,10 +261,7 @@ impl ParquetFile {
                 if batch.len() == 0 || batch[0].data().len() == 0 {
                     Ok(None)
                 } else {
-                    Ok(Some(RecordBatch::try_new(
-                        self.projection_schema.clone(),
-                        batch,
-                    )?))
+                    Ok(Some(RecordBatch::try_new(self.projection_schema.clone(), batch)?))
                 }
             }
             _ => Ok(None),
@@ -403,10 +276,7 @@ fn schema_projection(schema: &Schema, projection: &[usize]) -> Result<Arc<Schema
         if *i < schema.fields().len() {
             fields.push(schema.field(*i).clone());
         } else {
-            return Err(ExecutionError::InvalidColumn(format!(
-                "Invalid column index {} in projection",
-                i
-            )));
+            return Err(ExecutionError::InvalidColumn(format!("Invalid column index {} in projection", i)));
         }
     }
     Ok(Arc::new(Schema::new(fields)))
@@ -454,10 +324,7 @@ impl RecordBatchIterator for ParquetFile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::{
-        BinaryArray, BooleanArray, Float32Array, Float64Array, Int32Array,
-        TimestampNanosecondArray,
-    };
+    use arrow::array::{BinaryArray, BooleanArray, Float32Array, Float64Array, Int32Array, TimestampNanosecondArray};
     use std::env;
 
     #[test]
@@ -483,12 +350,7 @@ mod tests {
     fn read_alltypes_plain_parquet() {
         let table = load_table("alltypes_plain.parquet");
 
-        let x: Vec<String> = table
-            .schema()
-            .fields()
-            .iter()
-            .map(|f| format!("{}: {:?}", f.name(), f.data_type()))
-            .collect();
+        let x: Vec<String> = table.schema().fields().iter().map(|f| format!("{}: {:?}", f.name(), f.data_type())).collect();
         let y = x.join("\n");
         assert_eq!(
             "id: Int32\n\
@@ -526,20 +388,13 @@ mod tests {
         assert_eq!(1, batch.num_columns());
         assert_eq!(8, batch.num_rows());
 
-        let array = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<BooleanArray>()
-            .unwrap();
+        let array = batch.column(0).as_any().downcast_ref::<BooleanArray>().unwrap();
         let mut values: Vec<bool> = vec![];
         for i in 0..batch.num_rows() {
             values.push(array.value(i));
         }
 
-        assert_eq!(
-            "[true, false, true, false, true, false, true, false]",
-            format!("{:?}", values)
-        );
+        assert_eq!("[true, false, true, false, true, false, true, false]", format!("{:?}", values));
     }
 
     #[test]
@@ -554,11 +409,7 @@ mod tests {
         assert_eq!(1, batch.num_columns());
         assert_eq!(8, batch.num_rows());
 
-        let array = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<Int32Array>()
-            .unwrap();
+        let array = batch.column(0).as_any().downcast_ref::<Int32Array>().unwrap();
         let mut values: Vec<i32> = vec![];
         for i in 0..batch.num_rows() {
             values.push(array.value(i));
@@ -579,17 +430,16 @@ mod tests {
         assert_eq!(1, batch.num_columns());
         assert_eq!(8, batch.num_rows());
 
-        let array = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<TimestampNanosecondArray>()
-            .unwrap();
+        let array = batch.column(0).as_any().downcast_ref::<TimestampNanosecondArray>().unwrap();
         let mut values: Vec<i64> = vec![];
         for i in 0..batch.num_rows() {
             values.push(array.value(i));
         }
 
-        assert_eq!("[1235865600000000000, 1235865660000000000, 1238544000000000000, 1238544060000000000, 1233446400000000000, 1233446460000000000, 1230768000000000000, 1230768060000000000]", format!("{:?}", values));
+        assert_eq!(
+            "[1235865600000000000, 1235865660000000000, 1238544000000000000, 1238544060000000000, 1233446400000000000, 1233446460000000000, 1230768000000000000, 1230768060000000000]",
+            format!("{:?}", values)
+        );
     }
 
     #[test]
@@ -604,20 +454,13 @@ mod tests {
         assert_eq!(1, batch.num_columns());
         assert_eq!(8, batch.num_rows());
 
-        let array = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<Float32Array>()
-            .unwrap();
+        let array = batch.column(0).as_any().downcast_ref::<Float32Array>().unwrap();
         let mut values: Vec<f32> = vec![];
         for i in 0..batch.num_rows() {
             values.push(array.value(i));
         }
 
-        assert_eq!(
-            "[0.0, 1.1, 0.0, 1.1, 0.0, 1.1, 0.0, 1.1]",
-            format!("{:?}", values)
-        );
+        assert_eq!("[0.0, 1.1, 0.0, 1.1, 0.0, 1.1, 0.0, 1.1]", format!("{:?}", values));
     }
 
     #[test]
@@ -632,20 +475,13 @@ mod tests {
         assert_eq!(1, batch.num_columns());
         assert_eq!(8, batch.num_rows());
 
-        let array = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .unwrap();
+        let array = batch.column(0).as_any().downcast_ref::<Float64Array>().unwrap();
         let mut values: Vec<f64> = vec![];
         for i in 0..batch.num_rows() {
             values.push(array.value(i));
         }
 
-        assert_eq!(
-            "[0.0, 10.1, 0.0, 10.1, 0.0, 10.1, 0.0, 10.1]",
-            format!("{:?}", values)
-        );
+        assert_eq!("[0.0, 10.1, 0.0, 10.1, 0.0, 10.1, 0.0, 10.1]", format!("{:?}", values));
     }
 
     #[test]
@@ -660,26 +496,18 @@ mod tests {
         assert_eq!(1, batch.num_columns());
         assert_eq!(8, batch.num_rows());
 
-        let array = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<BinaryArray>()
-            .unwrap();
+        let array = batch.column(0).as_any().downcast_ref::<BinaryArray>().unwrap();
         let mut values: Vec<String> = vec![];
         for i in 0..batch.num_rows() {
             let str: String = String::from_utf8(array.value(i).to_vec()).unwrap();
             values.push(str);
         }
 
-        assert_eq!(
-            "[\"0\", \"1\", \"0\", \"1\", \"0\", \"1\", \"0\", \"1\"]",
-            format!("{:?}", values)
-        );
+        assert_eq!("[\"0\", \"1\", \"0\", \"1\", \"0\", \"1\", \"0\", \"1\"]", format!("{:?}", values));
     }
 
     fn load_table(name: &str) -> Box<TableProvider> {
-        let testdata =
-            env::var("PARQUET_TEST_DATA").expect("PARQUET_TEST_DATA not defined");
+        let testdata = env::var("PARQUET_TEST_DATA").expect("PARQUET_TEST_DATA not defined");
         let filename = format!("{}/{}", testdata, name);
         let table = ParquetTable::try_new(&filename).unwrap();
         Box::new(table)

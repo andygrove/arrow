@@ -52,18 +52,8 @@ impl TableProvider for CsvFile {
         &self.schema
     }
 
-    fn scan(
-        &self,
-        projection: &Option<Vec<usize>>,
-        batch_size: usize,
-    ) -> Result<Vec<ScanResult>> {
-        Ok(vec![Arc::new(Mutex::new(CsvBatchIterator::new(
-            &self.filename,
-            self.schema.clone(),
-            self.has_header,
-            projection,
-            batch_size,
-        )))])
+    fn scan(&self, projection: &Option<Vec<usize>>, batch_size: usize) -> Result<Vec<ScanResult>> {
+        Ok(vec![Arc::new(Mutex::new(CsvBatchIterator::new(&self.filename, self.schema.clone(), self.has_header, projection, batch_size)))])
     }
 }
 
@@ -76,36 +66,20 @@ pub struct CsvBatchIterator {
 
 impl CsvBatchIterator {
     #[allow(missing_docs)]
-    pub fn new(
-        filename: &str,
-        schema: Arc<Schema>,
-        has_header: bool,
-        projection: &Option<Vec<usize>>,
-        batch_size: usize,
-    ) -> Self {
+    pub fn new(filename: &str, schema: Arc<Schema>, has_header: bool, projection: &Option<Vec<usize>>, batch_size: usize) -> Self {
         let file = File::open(filename).unwrap();
-        let reader = csv::Reader::new(
-            file,
-            schema.clone(),
-            has_header,
-            batch_size,
-            projection.clone(),
-        );
+        let reader = csv::Reader::new(file, schema.clone(), has_header, batch_size, projection.clone());
 
         let projected_schema = match projection {
             Some(p) => {
-                let projected_fields: Vec<Field> =
-                    p.iter().map(|i| schema.fields()[*i].clone()).collect();
+                let projected_fields: Vec<Field> = p.iter().map(|i| schema.fields()[*i].clone()).collect();
 
                 Arc::new(Schema::new(projected_fields))
             }
             None => schema,
         };
 
-        Self {
-            schema: projected_schema,
-            reader,
-        }
+        Self { schema: projected_schema, reader }
     }
 }
 

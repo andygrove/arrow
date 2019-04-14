@@ -33,18 +33,12 @@ impl Bitmap {
     pub fn new(num_bits: usize) -> Self {
         let num_bytes = num_bits / 8 + if num_bits % 8 > 0 { 1 } else { 0 };
         let r = num_bytes % 64;
-        let len = if r == 0 {
-            num_bytes
-        } else {
-            num_bytes + 64 - r
-        };
+        let len = if r == 0 { num_bytes } else { num_bytes + 64 - r };
         let mut v = Vec::with_capacity(len);
         for _ in 0..len {
             v.push(255); // 1 is not null
         }
-        Bitmap {
-            bits: Buffer::from(&v[..]),
-        }
+        Bitmap { bits: Buffer::from(&v[..]) }
     }
 
     pub fn len(&self) -> usize {
@@ -94,20 +88,14 @@ mod tests {
     fn test_bitwise_and() {
         let bitmap1 = Bitmap::from(Buffer::from([0b01101010]));
         let bitmap2 = Bitmap::from(Buffer::from([0b01001110]));
-        assert_eq!(
-            Bitmap::from(Buffer::from([0b01001010])),
-            (&bitmap1 & &bitmap2).unwrap()
-        );
+        assert_eq!(Bitmap::from(Buffer::from([0b01001010])), (&bitmap1 & &bitmap2).unwrap());
     }
 
     #[test]
     fn test_bitwise_or() {
         let bitmap1 = Bitmap::from(Buffer::from([0b01101010]));
         let bitmap2 = Bitmap::from(Buffer::from([0b01001110]));
-        assert_eq!(
-            Bitmap::from(Buffer::from([0b01101110])),
-            (&bitmap1 | &bitmap2).unwrap()
-        );
+        assert_eq!(Bitmap::from(Buffer::from([0b01101110])), (&bitmap1 | &bitmap2).unwrap());
     }
 
     #[test]

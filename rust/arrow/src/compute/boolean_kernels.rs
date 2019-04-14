@@ -32,38 +32,19 @@ use crate::datatypes::DataType;
 use crate::error::{ArrowError, Result};
 
 /// Helper function to implement binary kernels
-fn binary_boolean_kernel<F>(
-    left: &BooleanArray,
-    right: &BooleanArray,
-    op: F,
-) -> Result<BooleanArray>
+fn binary_boolean_kernel<F>(left: &BooleanArray, right: &BooleanArray, op: F) -> Result<BooleanArray>
 where
     F: Fn(&Buffer, &Buffer) -> Result<Buffer>,
 {
     if left.offset() != right.offset() {
-        return Err(ArrowError::ComputeError(
-            "Cannot apply Bitwise binary op when arrays have different offsets."
-                .to_string(),
-        ));
+        return Err(ArrowError::ComputeError("Cannot apply Bitwise binary op when arrays have different offsets.".to_string()));
     }
 
     let left_data = left.data();
     let right_data = right.data();
-    let null_bit_buffer = apply_bin_op_to_option_bitmap(
-        left_data.null_bitmap(),
-        right_data.null_bitmap(),
-        |a, b| a & b,
-    )?;
+    let null_bit_buffer = apply_bin_op_to_option_bitmap(left_data.null_bitmap(), right_data.null_bitmap(), |a, b| a & b)?;
     let values = op(&left_data.buffers()[0], &right_data.buffers()[0])?;
-    let data = ArrayData::new(
-        DataType::Boolean,
-        left.len(),
-        None,
-        null_bit_buffer,
-        left.offset(),
-        vec![values],
-        vec![],
-    );
+    let data = ArrayData::new(DataType::Boolean, left.len(), None, null_bit_buffer, left.offset(), vec![values], vec![]);
     Ok(BooleanArray::from(Arc::new(data)))
 }
 
@@ -89,15 +70,7 @@ pub fn not(left: &BooleanArray) -> Result<BooleanArray> {
     };
 
     let values = !&data.buffers()[0];
-    let data = ArrayData::new(
-        DataType::Boolean,
-        left.len(),
-        None,
-        null_bit_buffer,
-        left.offset(),
-        vec![values],
-        vec![],
-    );
+    let data = ArrayData::new(DataType::Boolean, left.len(), None, null_bit_buffer, left.offset(), vec![values], vec![]);
     Ok(BooleanArray::from(Arc::new(data)))
 }
 

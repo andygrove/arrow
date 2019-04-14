@@ -30,12 +30,7 @@ use crate::schema::types::ColumnDescPtr;
 /// Macro as a shortcut to generate 'not yet implemented' panic error.
 macro_rules! nyi {
     ($column_descr:ident, $value:ident) => {{
-        unimplemented!(
-            "Conversion for physical type {}, logical type {}, value {:?}",
-            $column_descr.physical_type(),
-            $column_descr.logical_type(),
-            $value
-        );
+        unimplemented!("Conversion for physical type {}, logical type {}, value {:?}", $column_descr.physical_type(), $column_descr.logical_type(), $value);
     }};
 }
 
@@ -358,16 +353,12 @@ impl<'a> ListAccessor for MapList<'a> {
 
 impl MapAccessor for Map {
     fn get_keys<'a>(&'a self) -> Box<ListAccessor + 'a> {
-        let map_list = MapList {
-            elements: self.entries.iter().map(|v| &v.0).collect(),
-        };
+        let map_list = MapList { elements: self.entries.iter().map(|v| &v.0).collect() };
         Box::new(map_list)
     }
 
     fn get_values<'a>(&'a self) -> Box<ListAccessor + 'a> {
-        let map_list = MapList {
-            elements: self.entries.iter().map(|v| &v.1).collect(),
-        };
+        let map_list = MapList { elements: self.entries.iter().map(|v| &v.1).collect() };
         Box::new(map_list)
     }
 }
@@ -476,11 +467,7 @@ impl Field {
             LogicalType::UINT_16 => Field::UShort(value as u16),
             LogicalType::UINT_32 => Field::UInt(value as u32),
             LogicalType::DATE => Field::Date(value as u32),
-            LogicalType::DECIMAL => Field::Decimal(Decimal::from_i32(
-                value,
-                descr.type_precision(),
-                descr.type_scale(),
-            )),
+            LogicalType::DECIMAL => Field::Decimal(Decimal::from_i32(value, descr.type_precision(), descr.type_scale())),
             _ => nyi!(descr, value),
         }
     }
@@ -492,11 +479,7 @@ impl Field {
             LogicalType::INT_64 | LogicalType::NONE => Field::Long(value),
             LogicalType::UINT_64 => Field::ULong(value as u64),
             LogicalType::TIMESTAMP_MILLIS => Field::Timestamp(value as u64),
-            LogicalType::DECIMAL => Field::Decimal(Decimal::from_i64(
-                value,
-                descr.type_precision(),
-                descr.type_scale(),
-            )),
+            LogicalType::DECIMAL => Field::Decimal(Decimal::from_i64(value, descr.type_precision(), descr.type_scale())),
             _ => nyi!(descr, value),
         }
     }
@@ -518,10 +501,7 @@ impl Field {
         // Chrono library does not handle negative timestamps, but we could probably write
         // something similar to java.util.Date and java.util.Calendar.
         if millis < 0 {
-            panic!(
-                "Expected non-negative milliseconds when converting Int96, found {}",
-                millis
-            );
+            panic!("Expected non-negative milliseconds when converting Int96, found {}", millis);
         }
 
         Field::Timestamp(millis as u64)
@@ -546,24 +526,15 @@ impl Field {
         match descr.physical_type() {
             PhysicalType::BYTE_ARRAY => match descr.logical_type() {
                 LogicalType::UTF8 | LogicalType::ENUM | LogicalType::JSON => {
-                    let value =
-                        unsafe { String::from_utf8_unchecked(value.data().to_vec()) };
+                    let value = unsafe { String::from_utf8_unchecked(value.data().to_vec()) };
                     Field::Str(value)
                 }
                 LogicalType::BSON | LogicalType::NONE => Field::Bytes(value),
-                LogicalType::DECIMAL => Field::Decimal(Decimal::from_bytes(
-                    value,
-                    descr.type_precision(),
-                    descr.type_scale(),
-                )),
+                LogicalType::DECIMAL => Field::Decimal(Decimal::from_bytes(value, descr.type_precision(), descr.type_scale())),
                 _ => nyi!(descr, value),
             },
             PhysicalType::FIXED_LEN_BYTE_ARRAY => match descr.logical_type() {
-                LogicalType::DECIMAL => Field::Decimal(Decimal::from_bytes(
-                    value,
-                    descr.type_precision(),
-                    descr.type_scale(),
-                )),
+                LogicalType::DECIMAL => Field::Decimal(Decimal::from_bytes(value, descr.type_precision(), descr.type_scale())),
                 LogicalType::NONE => Field::Bytes(value),
                 _ => nyi!(descr, value),
             },
@@ -599,15 +570,11 @@ impl fmt::Display for Field {
                     write!(f, "{:?}", value)
                 }
             }
-            Field::Decimal(ref value) => {
-                write!(f, "{}", convert_decimal_to_string(value))
-            }
+            Field::Decimal(ref value) => write!(f, "{}", convert_decimal_to_string(value)),
             Field::Str(ref value) => write!(f, "\"{}\"", value),
             Field::Bytes(ref value) => write!(f, "{:?}", value.data()),
             Field::Date(value) => write!(f, "{}", convert_date_to_string(value)),
-            Field::Timestamp(value) => {
-                write!(f, "{}", convert_timestamp_to_string(value))
-            }
+            Field::Timestamp(value) => write!(f, "{}", convert_timestamp_to_string(value)),
             Field::Group(ref fields) => write!(f, "{}", fields),
             Field::ListInternal(ref list) => {
                 let elems = &list.elements;
@@ -700,33 +667,12 @@ mod tests {
     /// Creates test column descriptor based on provided type parameters.
     macro_rules! make_column_descr {
         ($physical_type:expr, $logical_type:expr) => {{
-            let tpe = PrimitiveTypeBuilder::new("col", $physical_type)
-                .with_logical_type($logical_type)
-                .build()
-                .unwrap();
-            Rc::new(ColumnDescriptor::new(
-                Rc::new(tpe),
-                None,
-                0,
-                0,
-                ColumnPath::from("col"),
-            ))
+            let tpe = PrimitiveTypeBuilder::new("col", $physical_type).with_logical_type($logical_type).build().unwrap();
+            Rc::new(ColumnDescriptor::new(Rc::new(tpe), None, 0, 0, ColumnPath::from("col")))
         }};
         ($physical_type:expr, $logical_type:expr, $len:expr, $prec:expr, $scale:expr) => {{
-            let tpe = PrimitiveTypeBuilder::new("col", $physical_type)
-                .with_logical_type($logical_type)
-                .with_length($len)
-                .with_precision($prec)
-                .with_scale($scale)
-                .build()
-                .unwrap();
-            Rc::new(ColumnDescriptor::new(
-                Rc::new(tpe),
-                None,
-                0,
-                0,
-                ColumnPath::from("col"),
-            ))
+            let tpe = PrimitiveTypeBuilder::new("col", $physical_type).with_logical_type($logical_type).with_length($len).with_precision($prec).with_scale($scale).build().unwrap();
+            Rc::new(ColumnDescriptor::new(Rc::new(tpe), None, 0, 0, ColumnPath::from("col")))
         }};
     }
 
@@ -776,8 +722,7 @@ mod tests {
         let row = Field::convert_int32(&descr, 14611);
         assert_eq!(row, Field::Date(14611));
 
-        let descr =
-            make_column_descr![PhysicalType::INT32, LogicalType::DECIMAL, 0, 8, 2];
+        let descr = make_column_descr![PhysicalType::INT32, LogicalType::DECIMAL, 0, 8, 2];
         let row = Field::convert_int32(&descr, 444);
         assert_eq!(row, Field::Decimal(Decimal::from_i32(444, 8, 2)));
     }
@@ -792,8 +737,7 @@ mod tests {
         let row = Field::convert_int64(&descr, 78239823);
         assert_eq!(row, Field::ULong(78239823));
 
-        let descr =
-            make_column_descr![PhysicalType::INT64, LogicalType::TIMESTAMP_MILLIS];
+        let descr = make_column_descr![PhysicalType::INT64, LogicalType::TIMESTAMP_MILLIS];
         let row = Field::convert_int64(&descr, 1541186529153);
         assert_eq!(row, Field::Timestamp(1541186529153));
 
@@ -801,8 +745,7 @@ mod tests {
         let row = Field::convert_int64(&descr, 2222);
         assert_eq!(row, Field::Long(2222));
 
-        let descr =
-            make_column_descr![PhysicalType::INT64, LogicalType::DECIMAL, 0, 8, 2];
+        let descr = make_column_descr![PhysicalType::INT64, LogicalType::DECIMAL, 0, 8, 2];
         let row = Field::convert_int64(&descr, 3333);
         assert_eq!(row, Field::Decimal(Decimal::from_i64(3333, 8, 2)));
     }
@@ -880,32 +823,19 @@ mod tests {
         assert_eq!(row, Field::Bytes(value));
 
         // DECIMAL
-        let descr =
-            make_column_descr![PhysicalType::BYTE_ARRAY, LogicalType::DECIMAL, 0, 8, 2];
+        let descr = make_column_descr![PhysicalType::BYTE_ARRAY, LogicalType::DECIMAL, 0, 8, 2];
         let value = ByteArray::from(vec![207, 200]);
         let row = Field::convert_byte_array(&descr, value.clone());
         assert_eq!(row, Field::Decimal(Decimal::from_bytes(value, 8, 2)));
 
         // DECIMAL (FIXED_LEN_BYTE_ARRAY)
-        let descr = make_column_descr![
-            PhysicalType::FIXED_LEN_BYTE_ARRAY,
-            LogicalType::DECIMAL,
-            8,
-            17,
-            5
-        ];
+        let descr = make_column_descr![PhysicalType::FIXED_LEN_BYTE_ARRAY, LogicalType::DECIMAL, 8, 17, 5];
         let value = ByteArray::from(vec![0, 0, 0, 0, 0, 4, 147, 224]);
         let row = Field::convert_byte_array(&descr, value.clone());
         assert_eq!(row, Field::Decimal(Decimal::from_bytes(value, 17, 5)));
 
         // NONE (FIXED_LEN_BYTE_ARRAY)
-        let descr = make_column_descr![
-            PhysicalType::FIXED_LEN_BYTE_ARRAY,
-            LogicalType::NONE,
-            6,
-            0,
-            0
-        ];
+        let descr = make_column_descr![PhysicalType::FIXED_LEN_BYTE_ARRAY, LogicalType::NONE, 6, 0, 0];
         let value = ByteArray::from(vec![1, 2, 3, 4, 5, 6]);
         let row = Field::convert_byte_array(&descr, value.clone());
         assert_eq!(row, Field::Bytes(value));
@@ -965,14 +895,8 @@ mod tests {
         assert_eq!(format!("{}", Field::Double(1e-16)), "1E-16");
         assert_eq!(format!("{}", Field::Double(1e19)), "10000000000000000000.0");
         assert_eq!(format!("{}", Field::Double(1e20)), "1E20");
-        assert_eq!(
-            format!("{}", Field::Double(1.79769313486E308)),
-            "1.79769313486E308"
-        );
-        assert_eq!(
-            format!("{}", Field::Double(-1.79769313486E308)),
-            "-1.79769313486E308"
-        );
+        assert_eq!(format!("{}", Field::Double(1.79769313486E308)), "1.79769313486E308");
+        assert_eq!(format!("{}", Field::Double(-1.79769313486E308)), "-1.79769313486E308");
     }
 
     #[test]
@@ -984,20 +908,8 @@ mod tests {
         }
 
         // This example previously used to fail in some engines
-        check_decimal(
-            vec![0, 0, 0, 0, 0, 0, 0, 0, 13, 224, 182, 179, 167, 100, 0, 0],
-            38,
-            18,
-            "1.000000000000000000",
-        );
-        check_decimal(
-            vec![
-                249, 233, 247, 16, 185, 192, 202, 223, 215, 165, 192, 166, 67, 72,
-            ],
-            36,
-            28,
-            "-12344.0242342304923409234234293432",
-        );
+        check_decimal(vec![0, 0, 0, 0, 0, 0, 0, 0, 13, 224, 182, 179, 167, 100, 0, 0], 38, 18, "1.000000000000000000");
+        check_decimal(vec![249, 233, 247, 16, 185, 192, 202, 223, 215, 165, 192, 166, 67, 72], 36, 28, "-12344.0242342304923409234234293432");
         check_decimal(vec![0, 0, 0, 0, 0, 4, 147, 224], 17, 5, "3.00000");
         check_decimal(vec![0, 0, 0, 0, 1, 201, 195, 140], 18, 2, "300000.12");
         check_decimal(vec![207, 200], 10, 2, "-123.44");
@@ -1023,46 +935,20 @@ mod tests {
         assert_eq!(format!("{}", Field::Double(6.0)), "6.0");
         assert_eq!(format!("{}", Field::Double(6.1234)), "6.1234");
         assert_eq!(format!("{}", Field::Str("abc".to_string())), "\"abc\"");
-        assert_eq!(
-            format!("{}", Field::Bytes(ByteArray::from(vec![1, 2, 3]))),
-            "[1, 2, 3]"
-        );
-        assert_eq!(
-            format!("{}", Field::Date(14611)),
-            convert_date_to_string(14611)
-        );
-        assert_eq!(
-            format!("{}", Field::Timestamp(1262391174000)),
-            convert_timestamp_to_string(1262391174000)
-        );
-        assert_eq!(
-            format!("{}", Field::Decimal(Decimal::from_i32(4, 8, 2))),
-            convert_decimal_to_string(&Decimal::from_i32(4, 8, 2))
-        );
+        assert_eq!(format!("{}", Field::Bytes(ByteArray::from(vec![1, 2, 3]))), "[1, 2, 3]");
+        assert_eq!(format!("{}", Field::Date(14611)), convert_date_to_string(14611));
+        assert_eq!(format!("{}", Field::Timestamp(1262391174000)), convert_timestamp_to_string(1262391174000));
+        assert_eq!(format!("{}", Field::Decimal(Decimal::from_i32(4, 8, 2))), convert_decimal_to_string(&Decimal::from_i32(4, 8, 2)));
 
         // Complex types
-        let fields = vec![
-            ("x".to_string(), Field::Null),
-            ("Y".to_string(), Field::Int(2)),
-            ("z".to_string(), Field::Float(3.1)),
-            ("a".to_string(), Field::Str("abc".to_string())),
-        ];
+        let fields = vec![("x".to_string(), Field::Null), ("Y".to_string(), Field::Int(2)), ("z".to_string(), Field::Float(3.1)), ("a".to_string(), Field::Str("abc".to_string()))];
         let row = Field::Group(make_row(fields));
         assert_eq!(format!("{}", row), "{x: null, Y: 2, z: 3.1, a: \"abc\"}");
 
-        let row = Field::ListInternal(make_list(vec![
-            Field::Int(2),
-            Field::Int(1),
-            Field::Null,
-            Field::Int(12),
-        ]));
+        let row = Field::ListInternal(make_list(vec![Field::Int(2), Field::Int(1), Field::Null, Field::Int(12)]));
         assert_eq!(format!("{}", row), "[2, 1, null, 12]");
 
-        let row = Field::MapInternal(make_map(vec![
-            (Field::Int(1), Field::Float(1.2)),
-            (Field::Int(2), Field::Float(4.5)),
-            (Field::Int(3), Field::Float(2.3)),
-        ]));
+        let row = Field::MapInternal(make_map(vec![(Field::Int(1), Field::Float(1.2)), (Field::Int(2), Field::Float(4.5)), (Field::Int(3), Field::Float(2.3))]));
         assert_eq!(format!("{}", row), "{1 -> 1.2, 2 -> 4.5, 3 -> 2.3}");
     }
 
@@ -1092,35 +978,12 @@ mod tests {
         // complex types
         assert_eq!(
             false,
-            Field::Group(make_row(vec![
-                ("x".to_string(), Field::Null),
-                ("Y".to_string(), Field::Int(2)),
-                ("z".to_string(), Field::Float(3.1)),
-                ("a".to_string(), Field::Str("abc".to_string()))
-            ]))
-            .is_primitive()
+            Field::Group(make_row(vec![("x".to_string(), Field::Null), ("Y".to_string(), Field::Int(2)), ("z".to_string(), Field::Float(3.1)), ("a".to_string(), Field::Str("abc".to_string()))])).is_primitive()
         );
 
-        assert_eq!(
-            false,
-            Field::ListInternal(make_list(vec![
-                Field::Int(2),
-                Field::Int(1),
-                Field::Null,
-                Field::Int(12)
-            ]))
-            .is_primitive()
-        );
+        assert_eq!(false, Field::ListInternal(make_list(vec![Field::Int(2), Field::Int(1), Field::Null, Field::Int(12)])).is_primitive());
 
-        assert_eq!(
-            false,
-            Field::MapInternal(make_map(vec![
-                (Field::Int(1), Field::Float(1.2)),
-                (Field::Int(2), Field::Float(4.5)),
-                (Field::Int(3), Field::Float(2.3))
-            ]))
-            .is_primitive()
-        );
+        assert_eq!(false, Field::MapInternal(make_map(vec![(Field::Int(1), Field::Float(1.2)), (Field::Int(2), Field::Float(4.5)), (Field::Int(3), Field::Float(2.3))])).is_primitive());
     }
 
     #[test]
@@ -1140,10 +1003,7 @@ mod tests {
             ("k".to_string(), Field::Float(7.1)),
             ("l".to_string(), Field::Double(8.1)),
             ("m".to_string(), Field::Str("abc".to_string())),
-            (
-                "n".to_string(),
-                Field::Bytes(ByteArray::from(vec![1, 2, 3, 4, 5])),
-            ),
+            ("n".to_string(), Field::Bytes(ByteArray::from(vec![1, 2, 3, 4, 5]))),
             ("o".to_string(), Field::Decimal(Decimal::from_i32(4, 7, 2))),
         ]);
 
@@ -1180,10 +1040,7 @@ mod tests {
             ("k".to_string(), Field::Float(7.1)),
             ("l".to_string(), Field::Double(8.1)),
             ("m".to_string(), Field::Str("abc".to_string())),
-            (
-                "n".to_string(),
-                Field::Bytes(ByteArray::from(vec![1, 2, 3, 4, 5])),
-            ),
+            ("n".to_string(), Field::Bytes(ByteArray::from(vec![1, 2, 3, 4, 5]))),
             ("o".to_string(), Field::Decimal(Decimal::from_i32(4, 7, 2))),
         ]);
 
@@ -1195,30 +1052,9 @@ mod tests {
     #[test]
     fn test_row_complex_accessors() {
         let row = make_row(vec![
-            (
-                "a".to_string(),
-                Field::Group(make_row(vec![
-                    ("x".to_string(), Field::Null),
-                    ("Y".to_string(), Field::Int(2)),
-                ])),
-            ),
-            (
-                "b".to_string(),
-                Field::ListInternal(make_list(vec![
-                    Field::Int(2),
-                    Field::Int(1),
-                    Field::Null,
-                    Field::Int(12),
-                ])),
-            ),
-            (
-                "c".to_string(),
-                Field::MapInternal(make_map(vec![
-                    (Field::Int(1), Field::Float(1.2)),
-                    (Field::Int(2), Field::Float(4.5)),
-                    (Field::Int(3), Field::Float(2.3)),
-                ])),
-            ),
+            ("a".to_string(), Field::Group(make_row(vec![("x".to_string(), Field::Null), ("Y".to_string(), Field::Int(2))]))),
+            ("b".to_string(), Field::ListInternal(make_list(vec![Field::Int(2), Field::Int(1), Field::Null, Field::Int(12)]))),
+            ("c".to_string(), Field::MapInternal(make_map(vec![(Field::Int(1), Field::Float(1.2)), (Field::Int(2), Field::Float(4.5)), (Field::Int(3), Field::Float(2.3))]))),
         ]);
 
         assert_eq!(2, row.get_group(0).unwrap().len());
@@ -1229,44 +1065,14 @@ mod tests {
     #[test]
     fn test_row_complex_invalid_accessors() {
         let row = make_row(vec![
-            (
-                "a".to_string(),
-                Field::Group(make_row(vec![
-                    ("x".to_string(), Field::Null),
-                    ("Y".to_string(), Field::Int(2)),
-                ])),
-            ),
-            (
-                "b".to_string(),
-                Field::ListInternal(make_list(vec![
-                    Field::Int(2),
-                    Field::Int(1),
-                    Field::Null,
-                    Field::Int(12),
-                ])),
-            ),
-            (
-                "c".to_string(),
-                Field::MapInternal(make_map(vec![
-                    (Field::Int(1), Field::Float(1.2)),
-                    (Field::Int(2), Field::Float(4.5)),
-                    (Field::Int(3), Field::Float(2.3)),
-                ])),
-            ),
+            ("a".to_string(), Field::Group(make_row(vec![("x".to_string(), Field::Null), ("Y".to_string(), Field::Int(2))]))),
+            ("b".to_string(), Field::ListInternal(make_list(vec![Field::Int(2), Field::Int(1), Field::Null, Field::Int(12)]))),
+            ("c".to_string(), Field::MapInternal(make_map(vec![(Field::Int(1), Field::Float(1.2)), (Field::Int(2), Field::Float(4.5)), (Field::Int(3), Field::Float(2.3))]))),
         ]);
 
-        assert_eq!(
-            ParquetError::General("Cannot access Group as Float".to_string()),
-            row.get_float(0).unwrap_err()
-        );
-        assert_eq!(
-            ParquetError::General("Cannot access ListInternal as Float".to_string()),
-            row.get_float(1).unwrap_err()
-        );
-        assert_eq!(
-            ParquetError::General("Cannot access MapInternal as Float".to_string()),
-            row.get_float(2).unwrap_err()
-        );
+        assert_eq!(ParquetError::General("Cannot access Group as Float".to_string()), row.get_float(0).unwrap_err());
+        assert_eq!(ParquetError::General("Cannot access ListInternal as Float".to_string()), row.get_float(1).unwrap_err());
+        assert_eq!(ParquetError::General("Cannot access MapInternal as Float".to_string()), row.get_float(2).unwrap_err());
     }
 
     #[test]
@@ -1299,11 +1105,7 @@ mod tests {
         let list = make_list(vec![Field::ULong(6), Field::ULong(7)]);
         assert_eq!(7, list.get_ulong(1).unwrap());
 
-        let list = make_list(vec![
-            Field::Float(8.1),
-            Field::Float(9.2),
-            Field::Float(10.3),
-        ]);
+        let list = make_list(vec![Field::Float(8.1), Field::Float(9.2), Field::Float(10.3)]);
         assert_eq!(10.3, list.get_float(2).unwrap());
 
         let list = make_list(vec![Field::Double(3.1415)]);
@@ -1349,11 +1151,7 @@ mod tests {
         let list = make_list(vec![Field::ULong(6), Field::ULong(7)]);
         assert!(list.get_float(1).is_err());
 
-        let list = make_list(vec![
-            Field::Float(8.1),
-            Field::Float(9.2),
-            Field::Float(10.3),
-        ]);
+        let list = make_list(vec![Field::Float(8.1), Field::Float(9.2), Field::Float(10.3)]);
         assert!(list.get_double(2).is_err());
 
         let list = make_list(vec![Field::Double(3.1415)]);
@@ -1371,59 +1169,26 @@ mod tests {
 
     #[test]
     fn test_list_complex_accessors() {
-        let list = make_list(vec![Field::Group(make_row(vec![
-            ("x".to_string(), Field::Null),
-            ("Y".to_string(), Field::Int(2)),
-        ]))]);
+        let list = make_list(vec![Field::Group(make_row(vec![("x".to_string(), Field::Null), ("Y".to_string(), Field::Int(2))]))]);
         assert_eq!(2, list.get_group(0).unwrap().len());
 
-        let list = make_list(vec![Field::ListInternal(make_list(vec![
-            Field::Int(2),
-            Field::Int(1),
-            Field::Null,
-            Field::Int(12),
-        ]))]);
+        let list = make_list(vec![Field::ListInternal(make_list(vec![Field::Int(2), Field::Int(1), Field::Null, Field::Int(12)]))]);
         assert_eq!(4, list.get_list(0).unwrap().len());
 
-        let list = make_list(vec![Field::MapInternal(make_map(vec![
-            (Field::Int(1), Field::Float(1.2)),
-            (Field::Int(2), Field::Float(4.5)),
-            (Field::Int(3), Field::Float(2.3)),
-        ]))]);
+        let list = make_list(vec![Field::MapInternal(make_map(vec![(Field::Int(1), Field::Float(1.2)), (Field::Int(2), Field::Float(4.5)), (Field::Int(3), Field::Float(2.3))]))]);
         assert_eq!(3, list.get_map(0).unwrap().len());
     }
 
     #[test]
     fn test_list_complex_invalid_accessors() {
-        let list = make_list(vec![Field::Group(make_row(vec![
-            ("x".to_string(), Field::Null),
-            ("Y".to_string(), Field::Int(2)),
-        ]))]);
-        assert_eq!(
-            general_err!("Cannot access Group as Float".to_string()),
-            list.get_float(0).unwrap_err()
-        );
+        let list = make_list(vec![Field::Group(make_row(vec![("x".to_string(), Field::Null), ("Y".to_string(), Field::Int(2))]))]);
+        assert_eq!(general_err!("Cannot access Group as Float".to_string()), list.get_float(0).unwrap_err());
 
-        let list = make_list(vec![Field::ListInternal(make_list(vec![
-            Field::Int(2),
-            Field::Int(1),
-            Field::Null,
-            Field::Int(12),
-        ]))]);
-        assert_eq!(
-            general_err!("Cannot access ListInternal as Float".to_string()),
-            list.get_float(0).unwrap_err()
-        );
+        let list = make_list(vec![Field::ListInternal(make_list(vec![Field::Int(2), Field::Int(1), Field::Null, Field::Int(12)]))]);
+        assert_eq!(general_err!("Cannot access ListInternal as Float".to_string()), list.get_float(0).unwrap_err());
 
-        let list = make_list(vec![Field::MapInternal(make_map(vec![
-            (Field::Int(1), Field::Float(1.2)),
-            (Field::Int(2), Field::Float(4.5)),
-            (Field::Int(3), Field::Float(2.3)),
-        ]))]);
-        assert_eq!(
-            general_err!("Cannot access MapInternal as Float".to_string()),
-            list.get_float(0).unwrap_err()
-        );
+        let list = make_list(vec![Field::MapInternal(make_map(vec![(Field::Int(1), Field::Float(1.2)), (Field::Int(2), Field::Float(4.5)), (Field::Int(3), Field::Float(2.3))]))]);
+        assert_eq!(general_err!("Cannot access MapInternal as Float".to_string()), list.get_float(0).unwrap_err());
     }
 
     #[test]
@@ -1440,10 +1205,7 @@ mod tests {
         assert_eq!(5, map.len());
         for i in 0..5 {
             assert_eq!((i + 1) as i32, map.get_keys().get_int(i).unwrap());
-            assert_eq!(
-                &((i as u8 + 'a' as u8) as char).to_string(),
-                map.get_values().get_string(i).unwrap()
-            );
+            assert_eq!(&((i as u8 + 'a' as u8) as char).to_string(), map.get_values().get_string(i).unwrap());
         }
     }
 }

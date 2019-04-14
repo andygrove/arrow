@@ -59,24 +59,11 @@ pub struct ArrayData {
 pub type ArrayDataRef = Arc<ArrayData>;
 
 impl ArrayData {
-    pub fn new(
-        data_type: DataType,
-        len: usize,
-        null_count: Option<usize>,
-        null_bit_buffer: Option<Buffer>,
-        offset: usize,
-        buffers: Vec<Buffer>,
-        child_data: Vec<ArrayDataRef>,
-    ) -> Self {
+    pub fn new(data_type: DataType, len: usize, null_count: Option<usize>, null_bit_buffer: Option<Buffer>, offset: usize, buffers: Vec<Buffer>, child_data: Vec<ArrayDataRef>) -> Self {
         let null_count = match null_count {
             None => {
                 if let Some(ref buf) = null_bit_buffer {
-                    len.checked_sub(bit_util::count_set_bits_offset(
-                        buf.data(),
-                        offset,
-                        len,
-                    ))
-                    .unwrap()
+                    len.checked_sub(bit_util::count_set_bits_offset(buf.data(), offset, len)).unwrap()
                 } else {
                     0
                 }
@@ -217,15 +204,7 @@ impl ArrayDataBuilder {
     }
 
     pub fn build(self) -> ArrayDataRef {
-        let data = ArrayData::new(
-            self.data_type,
-            self.len,
-            self.null_count,
-            self.null_bit_buffer,
-            self.offset,
-            self.buffers,
-            self.child_data,
-        );
+        let data = ArrayData::new(self.data_type, self.len, self.null_count, self.null_bit_buffer, self.offset, self.buffers, self.child_data);
         Arc::new(data)
     }
 }
@@ -241,8 +220,7 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let arr_data =
-            ArrayData::new(DataType::Boolean, 10, Some(1), None, 2, vec![], vec![]);
+        let arr_data = ArrayData::new(DataType::Boolean, 10, Some(1), None, 2, vec![], vec![]);
         assert_eq!(10, arr_data.len());
         assert_eq!(1, arr_data.null_count());
         assert_eq!(2, arr_data.offset());
@@ -253,23 +231,9 @@ mod tests {
     #[test]
     fn test_builder() {
         let v = vec![0, 1, 2, 3];
-        let child_arr_data = Arc::new(ArrayData::new(
-            DataType::Int32,
-            10,
-            Some(0),
-            None,
-            0,
-            vec![],
-            vec![],
-        ));
+        let child_arr_data = Arc::new(ArrayData::new(DataType::Int32, 10, Some(0), None, 0, vec![], vec![]));
         let b1 = Buffer::from(&v[..]);
-        let arr_data = ArrayData::builder(DataType::Int32)
-            .len(20)
-            .null_count(10)
-            .offset(5)
-            .add_buffer(b1)
-            .add_child_data(child_arr_data.clone())
-            .build();
+        let arr_data = ArrayData::builder(DataType::Int32).len(20).null_count(10).offset(5).add_buffer(b1).add_child_data(child_arr_data.clone()).build();
 
         assert_eq!(20, arr_data.len());
         assert_eq!(10, arr_data.null_count());
@@ -286,10 +250,7 @@ mod tests {
         bit_util::set_bit(&mut bit_v, 0);
         bit_util::set_bit(&mut bit_v, 3);
         bit_util::set_bit(&mut bit_v, 10);
-        let arr_data = ArrayData::builder(DataType::Int32)
-            .len(16)
-            .null_bit_buffer(Buffer::from(bit_v))
-            .build();
+        let arr_data = ArrayData::builder(DataType::Int32).len(16).null_bit_buffer(Buffer::from(bit_v)).build();
         assert_eq!(13, arr_data.null_count());
 
         // Test with offset
@@ -297,11 +258,7 @@ mod tests {
         bit_util::set_bit(&mut bit_v, 0);
         bit_util::set_bit(&mut bit_v, 3);
         bit_util::set_bit(&mut bit_v, 10);
-        let arr_data = ArrayData::builder(DataType::Int32)
-            .len(12)
-            .offset(2)
-            .null_bit_buffer(Buffer::from(bit_v))
-            .build();
+        let arr_data = ArrayData::builder(DataType::Int32).len(12).offset(2).null_bit_buffer(Buffer::from(bit_v)).build();
         assert_eq!(10, arr_data.null_count());
     }
 }

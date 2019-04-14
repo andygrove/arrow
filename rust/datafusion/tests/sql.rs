@@ -36,10 +36,7 @@ const DEFAULT_BATCH_SIZE: usize = 1024 * 1024;
 #[test]
 fn parquet_query() {
     let mut ctx = ExecutionContext::new();
-    ctx.register_table(
-        "alltypes_plain",
-        load_parquet_table("alltypes_plain.parquet"),
-    );
+    ctx.register_table("alltypes_plain", load_parquet_table("alltypes_plain.parquet"));
     let sql = "SELECT id, string_col FROM alltypes_plain";
     let actual = execute(&mut ctx, sql);
     let expected = "4\t\"0\"\n5\t\"1\"\n6\t\"0\"\n7\t\"1\"\n2\t\"0\"\n3\t\"1\"\n0\t\"0\"\n1\t\"1\"\n".to_string();
@@ -74,8 +71,7 @@ fn csv_query_group_by_string_min_max() {
     //TODO add ORDER BY once supported, to make this test determistic
     let sql = "SELECT c2, MIN(c12), MAX(c12) FROM aggregate_test_100 GROUP BY c1";
     let actual = execute(&mut ctx, sql);
-    let expected =
-        "\"d\"\t0.061029375346466685\t0.9748360509016578\n\"c\"\t0.0494924465469434\t0.991517828651004\n\"b\"\t0.04893135681998029\t0.9185813970744787\n\"a\"\t0.02182578039211991\t0.9800193410444061\n\"e\"\t0.01479305307777301\t0.9965400387585364\n".to_string();
+    let expected = "\"d\"\t0.061029375346466685\t0.9748360509016578\n\"c\"\t0.0494924465469434\t0.991517828651004\n\"b\"\t0.04893135681998029\t0.9185813970744787\n\"a\"\t0.02182578039211991\t0.9800193410444061\n\"e\"\t0.01479305307777301\t0.9965400387585364\n".to_string();
     assert_eq!(expected, actual);
 }
 
@@ -173,20 +169,10 @@ fn aggr_test_schema() -> Arc<Schema> {
 fn register_aggregate_csv(ctx: &mut ExecutionContext) {
     let testdata = env::var("ARROW_TEST_DATA").expect("ARROW_TEST_DATA not defined");
     let schema = aggr_test_schema();
-    register_csv(
-        ctx,
-        "aggregate_test_100",
-        &format!("{}/csv/aggregate_test_100.csv", testdata),
-        &schema,
-    );
+    register_csv(ctx, "aggregate_test_100", &format!("{}/csv/aggregate_test_100.csv", testdata), &schema);
 }
 
-fn register_csv(
-    ctx: &mut ExecutionContext,
-    name: &str,
-    filename: &str,
-    schema: &Arc<Schema>,
-) {
+fn register_csv(ctx: &mut ExecutionContext, name: &str, filename: &str, schema: &Arc<Schema>) {
     ctx.register_csv(name, filename, &schema, true);
 }
 
@@ -237,35 +223,28 @@ fn result_str(results: &Rc<RefCell<Relation>>) -> String {
                         str.push_str(&format!("{:?}", array.value(row_index)));
                     }
                     DataType::UInt16 => {
-                        let array =
-                            column.as_any().downcast_ref::<UInt16Array>().unwrap();
+                        let array = column.as_any().downcast_ref::<UInt16Array>().unwrap();
                         str.push_str(&format!("{:?}", array.value(row_index)));
                     }
                     DataType::UInt32 => {
-                        let array =
-                            column.as_any().downcast_ref::<UInt32Array>().unwrap();
+                        let array = column.as_any().downcast_ref::<UInt32Array>().unwrap();
                         str.push_str(&format!("{:?}", array.value(row_index)));
                     }
                     DataType::UInt64 => {
-                        let array =
-                            column.as_any().downcast_ref::<UInt64Array>().unwrap();
+                        let array = column.as_any().downcast_ref::<UInt64Array>().unwrap();
                         str.push_str(&format!("{:?}", array.value(row_index)));
                     }
                     DataType::Float32 => {
-                        let array =
-                            column.as_any().downcast_ref::<Float32Array>().unwrap();
+                        let array = column.as_any().downcast_ref::<Float32Array>().unwrap();
                         str.push_str(&format!("{:?}", array.value(row_index)));
                     }
                     DataType::Float64 => {
-                        let array =
-                            column.as_any().downcast_ref::<Float64Array>().unwrap();
+                        let array = column.as_any().downcast_ref::<Float64Array>().unwrap();
                         str.push_str(&format!("{:?}", array.value(row_index)));
                     }
                     DataType::Utf8 => {
-                        let array =
-                            column.as_any().downcast_ref::<BinaryArray>().unwrap();
-                        let s =
-                            String::from_utf8(array.value(row_index).to_vec()).unwrap();
+                        let array = column.as_any().downcast_ref::<BinaryArray>().unwrap();
+                        let s = String::from_utf8(array.value(row_index).to_vec()).unwrap();
 
                         str.push_str(&format!("{:?}", s));
                     }

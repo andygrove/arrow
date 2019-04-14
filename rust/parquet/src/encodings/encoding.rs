@@ -72,17 +72,11 @@ pub trait Encoder<T: DataType> {
 
 /// Gets a encoder for the particular data type `T` and encoding `encoding`. Memory usage
 /// for the encoder instance is tracked by `mem_tracker`.
-pub fn get_encoder<T: DataType>(
-    desc: ColumnDescPtr,
-    encoding: Encoding,
-    mem_tracker: MemTrackerPtr,
-) -> Result<Box<Encoder<T>>> {
+pub fn get_encoder<T: DataType>(desc: ColumnDescPtr, encoding: Encoding, mem_tracker: MemTrackerPtr) -> Result<Box<Encoder<T>>> {
     let encoder: Box<Encoder<T>> = match encoding {
         Encoding::PLAIN => Box::new(PlainEncoder::new(desc, mem_tracker, vec![])),
         Encoding::RLE_DICTIONARY | Encoding::PLAIN_DICTIONARY => {
-            return Err(general_err!(
-                "Cannot initialize this encoding through this function"
-            ));
+            return Err(general_err!("Cannot initialize this encoding through this function"));
         }
         Encoding::RLE => Box::new(RleValueEncoder::new()),
         Encoding::DELTA_BINARY_PACKED => Box::new(DeltaBitPackEncoder::new()),
@@ -130,12 +124,7 @@ impl<T: DataType> PlainEncoder<T> {
 
 impl<T: DataType> Encoder<T> for PlainEncoder<T> {
     default fn put(&mut self, values: &[T::T]) -> Result<()> {
-        let bytes = unsafe {
-            slice::from_raw_parts(
-                values as *const [T::T] as *const u8,
-                mem::size_of::<T::T>() * values.len(),
-            )
-        };
+        let bytes = unsafe { slice::from_raw_parts(values as *const [T::T] as *const u8, mem::size_of::<T::T>() * values.len()) };
         self.buffer.write(bytes)?;
         Ok(())
     }
@@ -282,8 +271,7 @@ impl<T: DataType> DictEncoder<T> {
     /// the result.
     #[inline]
     pub fn write_dict(&self) -> Result<ByteBufferPtr> {
-        let mut plain_encoder =
-            PlainEncoder::<T>::new(self.desc.clone(), self.mem_tracker.clone(), vec![]);
+        let mut plain_encoder = PlainEncoder::<T>::new(self.desc.clone(), self.mem_tracker.clone(), vec![]);
         plain_encoder.put(self.uniques.data())?;
         plain_encoder.flush_buffer()
     }
@@ -328,9 +316,7 @@ impl<T: DataType> DictEncoder<T> {
             self.hash_slots[j] = index;
             self.add_dict_key(value.clone());
 
-            if self.uniques.size()
-                > (self.hash_table_size as f32 * MAX_HASH_LOAD) as usize
-            {
+            if self.uniques.size() > (self.hash_table_size as f32 * MAX_HASH_LOAD) as usize {
                 self.double_table_size();
             }
         }
@@ -404,8 +390,7 @@ impl<T: DataType> Encoder<T> for DictEncoder<T> {
     #[inline]
     fn estimated_data_encoded_size(&self) -> usize {
         let bit_width = self.bit_width();
-        1 + RleEncoder::min_buffer_size(bit_width)
-            + RleEncoder::max_buffer_size(bit_width, self.buffered_indices.size())
+        1 + RleEncoder::min_buffer_size(bit_width) + RleEncoder::max_buffer_size(bit_width, self.buffered_indices.size())
     }
 
     #[inline]
@@ -459,10 +444,7 @@ pub struct RleValueEncoder<T: DataType> {
 impl<T: DataType> RleValueEncoder<T> {
     /// Creates new rle value encoder.
     pub fn new() -> Self {
-        Self {
-            encoder: None,
-            _phantom: PhantomData,
-        }
+        Self { encoder: None, _phantom: PhantomData }
     }
 }
 
@@ -507,10 +489,7 @@ impl Encoder<BoolType> for RleValueEncoder<BoolType> {
 
     #[inline]
     fn flush_buffer(&mut self) -> Result<ByteBufferPtr> {
-        assert!(
-            self.encoder.is_some(),
-            "RLE value encoder is not initialized"
-        );
+        assert!(self.encoder.is_some(), "RLE value encoder is not initialized");
         let rle_encoder = self.encoder.as_mut().unwrap();
 
         // Flush all encoder buffers and raw values
@@ -611,11 +590,9 @@ impl<T: DataType> DeltaBitPackEncoder<T> {
         // Write the size of each block
         self.page_header_writer.put_vlq_int(self.block_size as u64);
         // Write the number of mini blocks
-        self.page_header_writer
-            .put_vlq_int(self.num_mini_blocks as u64);
+        self.page_header_writer.put_vlq_int(self.num_mini_blocks as u64);
         // Write the number of all values (including non-encoded first value)
-        self.page_header_writer
-            .put_vlq_int(self.total_values as u64);
+        self.page_header_writer.put_vlq_int(self.total_values as u64);
         // Write first value
         self.page_header_writer.put_zigzag_vlq_int(self.first_value);
     }
@@ -652,8 +629,7 @@ impl<T: DataType> DeltaBitPackEncoder<T> {
             // Compute the max delta in current mini block
             let mut max_delta = i64::min_value();
             for j in 0..n {
-                max_delta =
-                    cmp::max(max_delta, self.deltas[i * self.mini_block_size + j]);
+                max_delta = cmp::max(max_delta, self.deltas[i * self.mini_block_size + j]);
             }
 
             // Compute bit width to store (max_delta - min_delta)
@@ -662,8 +638,7 @@ impl<T: DataType> DeltaBitPackEncoder<T> {
 
             // Encode values in current mini block using min_delta and bit_width
             for j in 0..n {
-                let packed_value = self
-                    .subtract_u64(self.deltas[i * self.mini_block_size + j], min_delta);
+                let packed_value = self.subtract_u64(self.deltas[i * self.mini_block_size + j], min_delta);
                 self.bit_writer.put_value(packed_value, bit_width);
             }
 
@@ -675,11 +650,7 @@ impl<T: DataType> DeltaBitPackEncoder<T> {
             self.values_in_block -= n;
         }
 
-        assert!(
-            self.values_in_block == 0,
-            "Expected 0 values in block, found {}",
-            self.values_in_block
-        );
+        assert!(self.values_in_block == 0, "Expected 0 values in block, found {}", self.values_in_block);
         Ok(())
     }
 }
@@ -883,10 +854,7 @@ impl<T: DataType> Encoder<T> for DeltaLengthByteArrayEncoder<T> {
 
 impl Encoder<ByteArrayType> for DeltaLengthByteArrayEncoder<ByteArrayType> {
     fn put(&mut self, values: &[ByteArray]) -> Result<()> {
-        let lengths: Vec<i32> = values
-            .iter()
-            .map(|byte_array| byte_array.len() as i32)
-            .collect();
+        let lengths: Vec<i32> = values.iter().map(|byte_array| byte_array.len() as i32).collect();
         self.len_encoder.put(&lengths)?;
         for byte_array in values {
             self.encoded_size += byte_array.len();
@@ -934,9 +902,7 @@ impl<T: DataType> DeltaByteArrayEncoder<T> {
 
 impl<T: DataType> Encoder<T> for DeltaByteArrayEncoder<T> {
     default fn put(&mut self, _values: &[T::T]) -> Result<()> {
-        panic!(
-            "DeltaByteArrayEncoder only supports ByteArrayType and FixedLenByteArrayType"
-        );
+        panic!("DeltaByteArrayEncoder only supports ByteArrayType and FixedLenByteArrayType");
     }
 
     fn encoding(&self) -> Encoding {
@@ -944,14 +910,11 @@ impl<T: DataType> Encoder<T> for DeltaByteArrayEncoder<T> {
     }
 
     fn estimated_data_encoded_size(&self) -> usize {
-        self.prefix_len_encoder.estimated_data_encoded_size()
-            + self.suffix_writer.estimated_data_encoded_size()
+        self.prefix_len_encoder.estimated_data_encoded_size() + self.suffix_writer.estimated_data_encoded_size()
     }
 
     default fn flush_buffer(&mut self) -> Result<ByteBufferPtr> {
-        panic!(
-            "DeltaByteArrayEncoder only supports ByteArrayType and FixedLenByteArrayType"
-        );
+        panic!("DeltaByteArrayEncoder only supports ByteArrayType and FixedLenByteArrayType");
     }
 }
 
@@ -966,8 +929,7 @@ impl Encoder<ByteArrayType> for DeltaByteArrayEncoder<ByteArrayType> {
             // value
             let prefix_len = cmp::min(self.previous.len(), current.len());
             let mut match_len = 0;
-            while match_len < prefix_len && self.previous[match_len] == current[match_len]
-            {
+            while match_len < prefix_len && self.previous[match_len] == current[match_len] {
                 match_len += 1;
             }
             prefix_lengths.push(match_len as i32);
@@ -999,14 +961,12 @@ impl Encoder<ByteArrayType> for DeltaByteArrayEncoder<ByteArrayType> {
 
 impl Encoder<FixedLenByteArrayType> for DeltaByteArrayEncoder<FixedLenByteArrayType> {
     fn put(&mut self, values: &[ByteArray]) -> Result<()> {
-        let s: &mut DeltaByteArrayEncoder<ByteArrayType> =
-            unsafe { mem::transmute(self) };
+        let s: &mut DeltaByteArrayEncoder<ByteArrayType> = unsafe { mem::transmute(self) };
         s.put(values)
     }
 
     fn flush_buffer(&mut self) -> Result<ByteBufferPtr> {
-        let s: &mut DeltaByteArrayEncoder<ByteArrayType> =
-            unsafe { mem::transmute(self) };
+        let s: &mut DeltaByteArrayEncoder<ByteArrayType> = unsafe { mem::transmute(self) };
         s.flush_buffer()
     }
 }
@@ -1018,9 +978,7 @@ mod tests {
     use std::rc::Rc;
 
     use crate::decoding::{get_decoder, Decoder, DictDecoder, PlainDecoder};
-    use crate::schema::types::{
-        ColumnDescPtr, ColumnDescriptor, ColumnPath, Type as SchemaType,
-    };
+    use crate::schema::types::{ColumnDescPtr, ColumnDescriptor, ColumnPath, Type as SchemaType};
     use crate::util::{
         memory::MemTracker,
         test_common::{random_bytes, RandGen},
@@ -1038,24 +996,11 @@ mod tests {
         create_and_check_encoder::<BoolType>(Encoding::RLE, None);
 
         // error when initializing
-        create_and_check_encoder::<Int32Type>(
-            Encoding::RLE_DICTIONARY,
-            Some(general_err!(
-                "Cannot initialize this encoding through this function"
-            )),
-        );
-        create_and_check_encoder::<Int32Type>(
-            Encoding::PLAIN_DICTIONARY,
-            Some(general_err!(
-                "Cannot initialize this encoding through this function"
-            )),
-        );
+        create_and_check_encoder::<Int32Type>(Encoding::RLE_DICTIONARY, Some(general_err!("Cannot initialize this encoding through this function")));
+        create_and_check_encoder::<Int32Type>(Encoding::PLAIN_DICTIONARY, Some(general_err!("Cannot initialize this encoding through this function")));
 
         // unsupported
-        create_and_check_encoder::<Int32Type>(
-            Encoding::BIT_PACKED,
-            Some(nyi_err!("Encoding BIT_PACKED is not supported")),
-        );
+        create_and_check_encoder::<Int32Type>(Encoding::BIT_PACKED, Some(nyi_err!("Encoding BIT_PACKED is not supported")));
     }
 
     #[test]
@@ -1114,11 +1059,7 @@ mod tests {
 
     #[test]
     fn test_dict_encoded_size() {
-        fn run_test<T: DataType>(
-            type_length: i32,
-            values: &[T::T],
-            expected_size: usize,
-        ) {
+        fn run_test<T: DataType>(type_length: i32, values: &[T::T], expected_size: usize) {
             let mut encoder = create_test_dict_encoder::<T>(type_length);
             assert_eq!(encoder.dict_encoded_size(), 0);
             encoder.put(values).unwrap();
@@ -1135,37 +1076,16 @@ mod tests {
         run_test::<FloatType>(-1, &[1f32, 2f32, 3f32, 4f32, 5f32], 20);
         run_test::<DoubleType>(-1, &[1f64, 2f64, 3f64, 4f64, 5f64], 40);
         // Int96: len + reference
-        run_test::<Int96Type>(
-            -1,
-            &[Int96::from(vec![1, 2, 3]), Int96::from(vec![2, 3, 4])],
-            32,
-        );
-        run_test::<ByteArrayType>(
-            -1,
-            &[ByteArray::from("abcd"), ByteArray::from("efj")],
-            15,
-        );
-        run_test::<FixedLenByteArrayType>(
-            2,
-            &[ByteArray::from("ab"), ByteArray::from("bc")],
-            4,
-        );
+        run_test::<Int96Type>(-1, &[Int96::from(vec![1, 2, 3]), Int96::from(vec![2, 3, 4])], 32);
+        run_test::<ByteArrayType>(-1, &[ByteArray::from("abcd"), ByteArray::from("efj")], 15);
+        run_test::<FixedLenByteArrayType>(2, &[ByteArray::from("ab"), ByteArray::from("bc")], 4);
     }
 
     #[test]
     fn test_estimated_data_encoded_size() {
-        fn run_test<T: DataType>(
-            encoding: Encoding,
-            type_length: i32,
-            values: &[T::T],
-            initial_size: usize,
-            max_size: usize,
-            flush_size: usize,
-        ) {
+        fn run_test<T: DataType>(encoding: Encoding, type_length: i32, values: &[T::T], initial_size: usize, max_size: usize, flush_size: usize) {
             let mut encoder = match encoding {
-                Encoding::PLAIN_DICTIONARY | Encoding::RLE_DICTIONARY => {
-                    Box::new(create_test_dict_encoder::<T>(type_length))
-                }
+                Encoding::PLAIN_DICTIONARY | Encoding::RLE_DICTIONARY => Box::new(create_test_dict_encoder::<T>(type_length)),
                 _ => create_test_encoder::<T>(type_length, encoding),
             };
             assert_eq!(encoder.estimated_data_encoded_size(), initial_size);
@@ -1186,14 +1106,7 @@ mod tests {
         run_test::<Int32Type>(Encoding::RLE_DICTIONARY, -1, &vec![123, 1024], 11, 68, 66);
 
         // DELTA_BINARY_PACKED
-        run_test::<Int32Type>(
-            Encoding::DELTA_BINARY_PACKED,
-            -1,
-            &vec![123; 1024],
-            0,
-            35,
-            0,
-        );
+        run_test::<Int32Type>(Encoding::DELTA_BINARY_PACKED, -1, &vec![123; 1024], 0, 35, 0);
 
         // RLE
         let mut values = vec![];
@@ -1225,10 +1138,8 @@ mod tests {
     // See: https://github.com/sunchao/parquet-rs/issues/47
     #[test]
     fn test_issue_47() {
-        let mut encoder =
-            create_test_encoder::<ByteArrayType>(0, Encoding::DELTA_BYTE_ARRAY);
-        let mut decoder =
-            create_test_decoder::<ByteArrayType>(0, Encoding::DELTA_BYTE_ARRAY);
+        let mut encoder = create_test_encoder::<ByteArrayType>(0, Encoding::DELTA_BYTE_ARRAY);
+        let mut decoder = create_test_decoder::<ByteArrayType>(0, Encoding::DELTA_BYTE_ARRAY);
 
         let mut input = vec![];
         input.push(ByteArray::from("aa"));
@@ -1237,36 +1148,21 @@ mod tests {
         input.push(ByteArray::from("aaa"));
         let mut output = vec![ByteArray::default(); input.len()];
 
-        let mut result =
-            put_and_get(&mut encoder, &mut decoder, &input[..2], &mut output[..2]);
-        assert!(
-            result.is_ok(),
-            "first put_and_get() failed with: {}",
-            result.unwrap_err()
-        );
+        let mut result = put_and_get(&mut encoder, &mut decoder, &input[..2], &mut output[..2]);
+        assert!(result.is_ok(), "first put_and_get() failed with: {}", result.unwrap_err());
         result = put_and_get(&mut encoder, &mut decoder, &input[2..], &mut output[2..]);
-        assert!(
-            result.is_ok(),
-            "second put_and_get() failed with: {}",
-            result.unwrap_err()
-        );
+        assert!(result.is_ok(), "second put_and_get() failed with: {}", result.unwrap_err());
         assert_eq!(output, input);
     }
 
     trait EncodingTester<T: DataType> {
         fn test(enc: Encoding, total: usize, type_length: i32) {
             let result = match enc {
-                Encoding::PLAIN_DICTIONARY | Encoding::RLE_DICTIONARY => {
-                    Self::test_dict_internal(total, type_length)
-                }
+                Encoding::PLAIN_DICTIONARY | Encoding::RLE_DICTIONARY => Self::test_dict_internal(total, type_length),
                 enc @ _ => Self::test_internal(enc, total, type_length),
             };
 
-            assert!(
-                result.is_ok(),
-                "Expected result to be OK but got err:\n {}",
-                result.unwrap_err()
-            );
+            assert!(result.is_ok(), "Expected result to be OK but got err:\n {}", result.unwrap_err());
         }
 
         fn test_internal(enc: Encoding, total: usize, type_length: i32) -> Result<()>;
@@ -1287,11 +1183,7 @@ mod tests {
             let values_written = encoder.put_spaced(&values[..], &valid_bits[..])?;
             let data = encoder.flush_buffer()?;
             decoder.set_data(data, values_written)?;
-            let _ = decoder.get_spaced(
-                &mut result_data[..],
-                values.len() - values_written,
-                &valid_bits[..],
-            )?;
+            let _ = decoder.get_spaced(&mut result_data[..], values.len() - values_written, &valid_bits[..])?;
 
             // Check equality
             for i in 0..total {
@@ -1302,24 +1194,14 @@ mod tests {
                 }
             }
 
-            let mut actual_total = put_and_get(
-                &mut encoder,
-                &mut decoder,
-                &values[..],
-                &mut result_data[..],
-            )?;
+            let mut actual_total = put_and_get(&mut encoder, &mut decoder, &values[..], &mut result_data[..])?;
             assert_eq!(actual_total, total);
             assert_eq!(result_data, values);
 
             // Encode more data after flush and test with decoder
 
             values = <T as RandGen<T>>::gen_vec(type_length, total);
-            actual_total = put_and_get(
-                &mut encoder,
-                &mut decoder,
-                &values[..],
-                &mut result_data[..],
-            )?;
+            actual_total = put_and_get(&mut encoder, &mut decoder, &values[..], &mut result_data[..])?;
             assert_eq!(actual_total, total);
             assert_eq!(result_data, values);
 
@@ -1362,22 +1244,14 @@ mod tests {
         }
     }
 
-    fn put_and_get<T: DataType>(
-        encoder: &mut Box<Encoder<T>>,
-        decoder: &mut Box<Decoder<T>>,
-        input: &[T::T],
-        output: &mut [T::T],
-    ) -> Result<usize> {
+    fn put_and_get<T: DataType>(encoder: &mut Box<Encoder<T>>, decoder: &mut Box<Decoder<T>>, input: &[T::T], output: &mut [T::T]) -> Result<usize> {
         encoder.put(input)?;
         let data = encoder.flush_buffer()?;
         decoder.set_data(data, input.len())?;
         decoder.get(output)
     }
 
-    fn create_and_check_encoder<T: DataType>(
-        encoding: Encoding,
-        err: Option<ParquetError>,
-    ) {
+    fn create_and_check_encoder<T: DataType>(encoding: Encoding, err: Option<ParquetError>) {
         let descr = create_test_col_desc_ptr(-1, T::get_physical_type());
         let mem_tracker = Rc::new(MemTracker::new());
         let encoder = get_encoder::<T>(descr, encoding, mem_tracker);
@@ -1395,17 +1269,8 @@ mod tests {
 
     // Creates test column descriptor.
     fn create_test_col_desc_ptr(type_len: i32, t: Type) -> ColumnDescPtr {
-        let ty = SchemaType::primitive_type_builder("t", t)
-            .with_length(type_len)
-            .build()
-            .unwrap();
-        Rc::new(ColumnDescriptor::new(
-            Rc::new(ty),
-            None,
-            0,
-            0,
-            ColumnPath::new(vec![]),
-        ))
+        let ty = SchemaType::primitive_type_builder("t", t).with_length(type_len).build().unwrap();
+        Rc::new(ColumnDescriptor::new(Rc::new(ty), None, 0, 0, ColumnPath::new(vec![])))
     }
 
     fn create_test_encoder<T: DataType>(type_len: i32, enc: Encoding) -> Box<Encoder<T>> {

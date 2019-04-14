@@ -75,9 +75,7 @@ impl DFParser {
         let dialect = GenericSqlDialect {};
         let mut tokenizer = Tokenizer::new(&dialect, &sql);
         let tokens = tokenizer.tokenize()?;
-        Ok(DFParser {
-            parser: Parser::new(tokens),
-        })
+        Ok(DFParser { parser: Parser::new(tokens) })
     }
 
     /// Parse a SQL statement and produce an Abstract Syntax Tree (AST)
@@ -109,24 +107,16 @@ impl DFParser {
 
     /// Parse an expression prefix
     fn parse_prefix(&mut self) -> Result<DFASTNode, ParserError> {
-        if self
-            .parser
-            .parse_keywords(vec!["CREATE", "EXTERNAL", "TABLE"])
-        {
+        if self.parser.parse_keywords(vec!["CREATE", "EXTERNAL", "TABLE"]) {
             match self.parser.next_token() {
                 Some(Token::Identifier(id)) => {
                     // parse optional column list (schema)
                     let mut columns = vec![];
                     if self.parser.consume_token(&Token::LParen) {
                         loop {
-                            if let Some(Token::Identifier(column_name)) =
-                                self.parser.next_token()
-                            {
+                            if let Some(Token::Identifier(column_name)) = self.parser.next_token() {
                                 if let Ok(data_type) = self.parser.parse_data_type() {
-                                    let allow_null = if self
-                                        .parser
-                                        .parse_keywords(vec!["NOT", "NULL"])
-                                    {
+                                    let allow_null = if self.parser.parse_keywords(vec!["NOT", "NULL"]) {
                                         false
                                     } else if self.parser.parse_keyword("NULL") {
                                         true
@@ -148,15 +138,11 @@ impl DFParser {
                                         }
                                         Some(Token::RParen) => break,
                                         _ => {
-                                            return parser_err!(
-                                                "Expected ',' or ')' after column definition"
-                                            );
+                                            return parser_err!("Expected ',' or ')' after column definition");
                                         }
                                     }
                                 } else {
-                                    return parser_err!(
-                                        "Error parsing data type in column definition"
-                                    );
+                                    return parser_err!("Error parsing data type in column definition");
                                 }
                             } else {
                                 return parser_err!("Error parsing column name");
@@ -167,33 +153,22 @@ impl DFParser {
                     //println!("Parsed {} column defs", columns.len());
 
                     let mut headers = true;
-                    let file_type: FileType = if self
-                        .parser
-                        .parse_keywords(vec!["STORED", "AS", "CSV"])
-                    {
+                    let file_type: FileType = if self.parser.parse_keywords(vec!["STORED", "AS", "CSV"]) {
                         if self.parser.parse_keywords(vec!["WITH", "HEADER", "ROW"]) {
                             headers = true;
-                        } else if self
-                            .parser
-                            .parse_keywords(vec!["WITHOUT", "HEADER", "ROW"])
-                        {
+                        } else if self.parser.parse_keywords(vec!["WITHOUT", "HEADER", "ROW"]) {
                             headers = false;
                         }
                         FileType::CSV
                     } else if self.parser.parse_keywords(vec!["STORED", "AS", "NDJSON"]) {
                         FileType::NdJson
-                    } else if self.parser.parse_keywords(vec!["STORED", "AS", "PARQUET"])
-                    {
+                    } else if self.parser.parse_keywords(vec!["STORED", "AS", "PARQUET"]) {
                         FileType::Parquet
                     } else {
-                        return parser_err!(format!(
-                            "Expected 'STORED AS' clause, found {:?}",
-                            self.parser.peek_token()
-                        ));
+                        return parser_err!(format!("Expected 'STORED AS' clause, found {:?}", self.parser.peek_token()));
                     };
 
-                    let location: String = if self.parser.parse_keywords(vec!["LOCATION"])
-                    {
+                    let location: String = if self.parser.parse_keywords(vec!["LOCATION"]) {
                         self.parser.parse_literal_string()?
                     } else {
                         return parser_err!("Missing 'LOCATION' clause");
@@ -207,10 +182,7 @@ impl DFParser {
                         location,
                     })
                 }
-                _ => parser_err!(format!(
-                    "Unexpected token after CREATE EXTERNAL TABLE: {:?}",
-                    self.parser.peek_token()
-                )),
+                _ => parser_err!(format!("Unexpected token after CREATE EXTERNAL TABLE: {:?}", self.parser.peek_token())),
             }
         } else {
             Ok(DFASTNode::ANSI(self.parser.parse_prefix()?))
@@ -218,11 +190,7 @@ impl DFParser {
     }
 
     /// Parse an infix operator
-    pub fn parse_infix(
-        &mut self,
-        _expr: DFASTNode,
-        _precedence: u8,
-    ) -> Result<Option<DFASTNode>, ParserError> {
+    pub fn parse_infix(&mut self, _expr: DFASTNode, _precedence: u8) -> Result<Option<DFASTNode>, ParserError> {
         unimplemented!()
     }
 }

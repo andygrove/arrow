@@ -49,12 +49,7 @@ fn main() {
     ]));
 
     // register csv file with the execution context
-    ctx.register_csv(
-        "aggregate_test_100",
-        "../../testing/data/csv/aggregate_test_100.csv",
-        &schema,
-        true,
-    );
+    ctx.register_csv("aggregate_test_100", "../../testing/data/csv/aggregate_test_100.csv", &schema, true);
 
     // simple projection and selection
     let sql = "SELECT c1, MIN(c12), MAX(c12) FROM aggregate_test_100 WHERE c11 > 0.1 AND c11 < 0.9 GROUP BY c1";
@@ -66,29 +61,13 @@ fn main() {
     let mut results = relation.borrow_mut();
 
     while let Some(batch) = results.next().unwrap() {
-        println!(
-            "RecordBatch has {} rows and {} columns",
-            batch.num_rows(),
-            batch.num_columns()
-        );
+        println!("RecordBatch has {} rows and {} columns", batch.num_rows(), batch.num_columns());
 
-        let c1 = batch
-            .column(0)
-            .as_any()
-            .downcast_ref::<BinaryArray>()
-            .unwrap();
+        let c1 = batch.column(0).as_any().downcast_ref::<BinaryArray>().unwrap();
 
-        let min = batch
-            .column(1)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .unwrap();
+        let min = batch.column(1).as_any().downcast_ref::<Float64Array>().unwrap();
 
-        let max = batch
-            .column(2)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .unwrap();
+        let max = batch.column(2).as_any().downcast_ref::<Float64Array>().unwrap();
 
         for i in 0..batch.num_rows() {
             let c1_value: String = String::from_utf8(c1.value(i).to_vec()).unwrap();

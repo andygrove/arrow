@@ -52,21 +52,16 @@ impl Table for TableImpl {
                     expr.push(Expr::Column(i));
                 }
                 _ => {
-                    return Err(ExecutionError::InvalidColumn(format!(
-                        "No column named '{}'",
-                        column
-                    )));
+                    return Err(ExecutionError::InvalidColumn(format!("No column named '{}'", column)));
                 }
             }
         }
 
-        Ok(Arc::new(TableImpl::new(Arc::new(
-            LogicalPlan::Projection {
-                expr,
-                input: self.plan.clone(),
-                schema: projection(&schema, &projection_index)?,
-            },
-        ))))
+        Ok(Arc::new(TableImpl::new(Arc::new(LogicalPlan::Projection {
+            expr,
+            input: self.plan.clone(),
+            schema: projection(&schema, &projection_index)?,
+        }))))
     }
 
     /// Limit the number of rows
@@ -91,10 +86,7 @@ fn projection(schema: &Schema, projection: &Vec<usize>) -> Result<Arc<Schema>> {
         if *i < schema.fields().len() {
             fields.push(schema.field(*i).clone());
         } else {
-            return Err(ExecutionError::InvalidColumn(format!(
-                "Invalid column index {} in projection",
-                i
-            )));
+            return Err(ExecutionError::InvalidColumn(format!("Invalid column index {} in projection", i)));
         }
     }
     Ok(Arc::new(Schema::new(fields)))

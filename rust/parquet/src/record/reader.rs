@@ -43,9 +43,7 @@ pub struct TreeBuilder {
 impl TreeBuilder {
     /// Creates new tree builder with default parameters.
     pub fn new() -> Self {
-        Self {
-            batch_size: DEFAULT_BATCH_SIZE,
-        }
+        Self { batch_size: DEFAULT_BATCH_SIZE }
     }
 
     /// Sets batch size for this tree builder.
@@ -55,11 +53,7 @@ impl TreeBuilder {
     }
 
     /// Creates new root reader for provided schema and row group.
-    pub fn build(
-        &self,
-        descr: SchemaDescPtr,
-        row_group_reader: &RowGroupReader,
-    ) -> Reader {
+    pub fn build(&self, descr: SchemaDescPtr, row_group_reader: &RowGroupReader) -> Reader {
         // Prepare lookup table of column path -> original column index
         // This allows to prune columns and map schema leaf nodes to the column readers
         let mut paths: HashMap<ColumnPath, usize> = HashMap::new();
@@ -76,14 +70,7 @@ impl TreeBuilder {
         let mut path = Vec::new();
 
         for field in descr.root_schema().get_fields() {
-            let reader = self.reader_tree(
-                field.clone(),
-                &mut path,
-                0,
-                0,
-                &paths,
-                row_group_reader,
-            );
+            let reader = self.reader_tree(field.clone(), &mut path, 0, 0, &paths, row_group_reader);
             readers.push(reader);
         }
 
@@ -93,25 +80,13 @@ impl TreeBuilder {
     }
 
     /// Creates iterator of `Row`s directly from schema descriptor and row group.
-    pub fn as_iter(
-        &self,
-        descr: SchemaDescPtr,
-        row_group_reader: &RowGroupReader,
-    ) -> ReaderIter {
+    pub fn as_iter(&self, descr: SchemaDescPtr, row_group_reader: &RowGroupReader) -> ReaderIter {
         let num_records = row_group_reader.metadata().num_rows() as usize;
         ReaderIter::new(self.build(descr, row_group_reader), num_records)
     }
 
     /// Builds tree of readers for the current schema recursively.
-    fn reader_tree(
-        &self,
-        field: TypePtr,
-        mut path: &mut Vec<String>,
-        mut curr_def_level: i16,
-        mut curr_rep_level: i16,
-        paths: &HashMap<ColumnPath, usize>,
-        row_group_reader: &RowGroupReader,
-    ) -> Reader {
+    fn reader_tree(&self, field: TypePtr, mut path: &mut Vec<String>, mut curr_def_level: i16, mut curr_rep_level: i16, paths: &HashMap<ColumnPath, usize>, row_group_reader: &RowGroupReader) -> Reader {
         assert!(field.get_basic_info().has_repetition());
         // Update current definition and repetition levels for this type
         let repetition = field.get_basic_info().repetition();
@@ -130,10 +105,7 @@ impl TreeBuilder {
         let reader = if field.is_primitive() {
             let col_path = ColumnPath::new(path.to_vec());
             let orig_index = *paths.get(&col_path).unwrap();
-            let col_descr = row_group_reader
-                .metadata()
-                .column(orig_index)
-                .column_descr_ptr();
+            let col_descr = row_group_reader.metadata().column(orig_index).column_descr_ptr();
             let col_reader = row_group_reader.get_column_reader(orig_index).unwrap();
             let column = TripletIter::new(col_descr, col_reader, self.batch_size);
             Reader::PrimitiveReader(field, column)
@@ -141,126 +113,49 @@ impl TreeBuilder {
             match field.get_basic_info().logical_type() {
                 // List types
                 LogicalType::LIST => {
-                    assert_eq!(
-                        field.get_fields().len(),
-                        1,
-                        "Invalid list type {:?}",
-                        field
-                    );
+                    assert_eq!(field.get_fields().len(), 1, "Invalid list type {:?}", field);
 
                     let repeated_field = field.get_fields()[0].clone();
-                    assert_eq!(
-                        repeated_field.get_basic_info().repetition(),
-                        Repetition::REPEATED,
-                        "Invalid list type {:?}",
-                        field
-                    );
+                    assert_eq!(repeated_field.get_basic_info().repetition(), Repetition::REPEATED, "Invalid list type {:?}", field);
 
                     if Reader::is_element_type(&repeated_field) {
                         // Support for backward compatible lists
-                        let reader = self.reader_tree(
-                            repeated_field.clone(),
-                            &mut path,
-                            curr_def_level,
-                            curr_rep_level,
-                            paths,
-                            row_group_reader,
-                        );
+                        let reader = self.reader_tree(repeated_field.clone(), &mut path, curr_def_level, curr_rep_level, paths, row_group_reader);
 
-                        Reader::RepeatedReader(
-                            field,
-                            curr_def_level,
-                            curr_rep_level,
-                            Box::new(reader),
-                        )
+                        Reader::RepeatedReader(field, curr_def_level, curr_rep_level, Box::new(reader))
                     } else {
                         let child_field = repeated_field.get_fields()[0].clone();
 
                         path.push(String::from(repeated_field.name()));
 
-                        let reader = self.reader_tree(
-                            child_field,
-                            &mut path,
-                            curr_def_level + 1,
-                            curr_rep_level + 1,
-                            paths,
-                            row_group_reader,
-                        );
+                        let reader = self.reader_tree(child_field, &mut path, curr_def_level + 1, curr_rep_level + 1, paths, row_group_reader);
 
                         path.pop();
 
-                        Reader::RepeatedReader(
-                            field,
-                            curr_def_level,
-                            curr_rep_level,
-                            Box::new(reader),
-                        )
+                        Reader::RepeatedReader(field, curr_def_level, curr_rep_level, Box::new(reader))
                     }
                 }
                 // Map types (key-value pairs)
                 LogicalType::MAP | LogicalType::MAP_KEY_VALUE => {
-                    assert_eq!(
-                        field.get_fields().len(),
-                        1,
-                        "Invalid map type: {:?}",
-                        field
-                    );
-                    assert!(
-                        !field.get_fields()[0].is_primitive(),
-                        "Invalid map type: {:?}",
-                        field
-                    );
+                    assert_eq!(field.get_fields().len(), 1, "Invalid map type: {:?}", field);
+                    assert!(!field.get_fields()[0].is_primitive(), "Invalid map type: {:?}", field);
 
                     let key_value_type = field.get_fields()[0].clone();
-                    assert_eq!(
-                        key_value_type.get_basic_info().repetition(),
-                        Repetition::REPEATED,
-                        "Invalid map type: {:?}",
-                        field
-                    );
-                    assert_eq!(
-                        key_value_type.get_fields().len(),
-                        2,
-                        "Invalid map type: {:?}",
-                        field
-                    );
+                    assert_eq!(key_value_type.get_basic_info().repetition(), Repetition::REPEATED, "Invalid map type: {:?}", field);
+                    assert_eq!(key_value_type.get_fields().len(), 2, "Invalid map type: {:?}", field);
 
                     path.push(String::from(key_value_type.name()));
 
                     let key_type = &key_value_type.get_fields()[0];
-                    assert!(
-                        key_type.is_primitive(),
-                        "Map key type is expected to be a primitive type, but found {:?}",
-                        key_type
-                    );
-                    let key_reader = self.reader_tree(
-                        key_type.clone(),
-                        &mut path,
-                        curr_def_level + 1,
-                        curr_rep_level + 1,
-                        paths,
-                        row_group_reader,
-                    );
+                    assert!(key_type.is_primitive(), "Map key type is expected to be a primitive type, but found {:?}", key_type);
+                    let key_reader = self.reader_tree(key_type.clone(), &mut path, curr_def_level + 1, curr_rep_level + 1, paths, row_group_reader);
 
                     let value_type = &key_value_type.get_fields()[1];
-                    let value_reader = self.reader_tree(
-                        value_type.clone(),
-                        &mut path,
-                        curr_def_level + 1,
-                        curr_rep_level + 1,
-                        paths,
-                        row_group_reader,
-                    );
+                    let value_reader = self.reader_tree(value_type.clone(), &mut path, curr_def_level + 1, curr_rep_level + 1, paths, row_group_reader);
 
                     path.pop();
 
-                    Reader::KeyValueReader(
-                        field,
-                        curr_def_level,
-                        curr_rep_level,
-                        Box::new(key_reader),
-                        Box::new(value_reader),
-                    )
+                    Reader::KeyValueReader(field, curr_def_level, curr_rep_level, Box::new(key_reader), Box::new(value_reader))
                 }
                 // A repeated field that is neither contained by a `LIST`- or
                 // `MAP`-annotated group nor annotated by `LIST` or `MAP`
@@ -276,34 +171,15 @@ impl TreeBuilder {
 
                     path.pop();
 
-                    let reader = self.reader_tree(
-                        Rc::new(required_field),
-                        &mut path,
-                        curr_def_level,
-                        curr_rep_level,
-                        paths,
-                        row_group_reader,
-                    );
+                    let reader = self.reader_tree(Rc::new(required_field), &mut path, curr_def_level, curr_rep_level, paths, row_group_reader);
 
-                    Reader::RepeatedReader(
-                        field,
-                        curr_def_level - 1,
-                        curr_rep_level - 1,
-                        Box::new(reader),
-                    )
+                    Reader::RepeatedReader(field, curr_def_level - 1, curr_rep_level - 1, Box::new(reader))
                 }
                 // Group types (structs)
                 _ => {
                     let mut readers = Vec::new();
                     for child in field.get_fields() {
-                        let reader = self.reader_tree(
-                            child.clone(),
-                            &mut path,
-                            curr_def_level,
-                            curr_rep_level,
-                            paths,
-                            row_group_reader,
-                        );
+                        let reader = self.reader_tree(child.clone(), &mut path, curr_def_level, curr_rep_level, paths, row_group_reader);
                         readers.push(reader);
                     }
                     Reader::GroupReader(Some(field), curr_def_level, readers)
@@ -429,13 +305,8 @@ impl Reader {
             Reader::GroupReader(_, def_level, ref mut readers) => {
                 let mut fields = Vec::new();
                 for reader in readers {
-                    if reader.repetition() != Repetition::OPTIONAL
-                        || reader.current_def_level() > def_level
-                    {
-                        fields.push((
-                            String::from(reader.field_name()),
-                            reader.read_field(),
-                        ));
+                    if reader.repetition() != Repetition::OPTIONAL || reader.current_def_level() > def_level {
+                        fields.push((String::from(reader.field_name()), reader.read_field()));
                     } else {
                         reader.advance_columns();
                         fields.push((String::from(reader.field_name()), Field::Null));
@@ -467,13 +338,7 @@ impl Reader {
                 }
                 Field::ListInternal(make_list(elements))
             }
-            Reader::KeyValueReader(
-                _,
-                def_level,
-                rep_level,
-                ref mut keys,
-                ref mut values,
-            ) => {
+            Reader::KeyValueReader(_, def_level, rep_level, ref mut keys, ref mut values) => {
                 let mut pairs = Vec::new();
                 loop {
                     if keys.current_def_level() > def_level {
@@ -627,10 +492,7 @@ pub struct RowIter<'a> {
 impl<'a> RowIter<'a> {
     /// Creates iterator of [`Row`](`::record::api::Row`)s for all row groups in a file.
     pub fn from_file(proj: Option<Type>, reader: &'a FileReader) -> Result<Self> {
-        let descr = Self::get_proj_descr(
-            proj,
-            reader.metadata().file_metadata().schema_descr_ptr(),
-        )?;
+        let descr = Self::get_proj_descr(proj, reader.metadata().file_metadata().schema_descr_ptr())?;
         let num_row_groups = reader.num_row_groups();
 
         Ok(Self {
@@ -644,10 +506,7 @@ impl<'a> RowIter<'a> {
     }
 
     /// Creates iterator of [`Row`](`::record::api::Row`)s for a specific row group.
-    pub fn from_row_group(
-        proj: Option<Type>,
-        reader: &'a RowGroupReader,
-    ) -> Result<Self> {
+    pub fn from_row_group(proj: Option<Type>, reader: &'a RowGroupReader) -> Result<Self> {
         let descr = Self::get_proj_descr(proj, reader.metadata().schema_descr_ptr())?;
         let tree_builder = Self::tree_builder();
         let row_iter = tree_builder.as_iter(descr.clone(), reader);
@@ -674,10 +533,7 @@ impl<'a> RowIter<'a> {
     /// Helper method to get schema descriptor for projected schema.
     /// If projection is None, then full schema is returned.
     #[inline]
-    fn get_proj_descr(
-        proj: Option<Type>,
-        root_descr: SchemaDescPtr,
-    ) -> Result<SchemaDescPtr> {
+    fn get_proj_descr(proj: Option<Type>, root_descr: SchemaDescPtr) -> Result<SchemaDescPtr> {
         match proj {
             Some(projection) => {
                 // check if projection is part of file schema
@@ -704,16 +560,9 @@ impl<'a> Iterator for RowIter<'a> {
         while row.is_none() && self.current_row_group < self.num_row_groups {
             // We do not expect any failures when accessing a row group, and file reader
             // must be set for selecting next row group.
-            let row_group_reader = &*self
-                .file_reader
-                .as_ref()
-                .expect("File reader is required to advance row group")
-                .get_row_group(self.current_row_group)
-                .unwrap();
+            let row_group_reader = &*self.file_reader.as_ref().expect("File reader is required to advance row group").get_row_group(self.current_row_group).unwrap();
             self.current_row_group += 1;
-            let mut iter = self
-                .tree_builder
-                .as_iter(self.descr.clone(), row_group_reader);
+            let mut iter = self.tree_builder.as_iter(self.descr.clone(), row_group_reader);
             row = iter.next();
             self.row_iter = Some(iter);
         }
@@ -732,10 +581,7 @@ impl ReaderIter {
     fn new(mut root_reader: Reader, num_records: usize) -> Self {
         // Prepare root reader by advancing all column vectors
         root_reader.advance_columns();
-        Self {
-            root_reader,
-            records_left: num_records,
-        }
+        Self { root_reader, records_left: num_records }
     }
 }
 
@@ -830,38 +676,14 @@ mod tests {
     fn test_file_reader_rows_nulls() {
         let rows = test_file_reader_rows("nulls.snappy.parquet", None).unwrap();
         let expected_rows = vec![
-            row![(
-                "b_struct".to_string(),
-                group![("b_c_int".to_string(), Field::Null)]
-            )],
-            row![(
-                "b_struct".to_string(),
-                group![("b_c_int".to_string(), Field::Null)]
-            )],
-            row![(
-                "b_struct".to_string(),
-                group![("b_c_int".to_string(), Field::Null)]
-            )],
-            row![(
-                "b_struct".to_string(),
-                group![("b_c_int".to_string(), Field::Null)]
-            )],
-            row![(
-                "b_struct".to_string(),
-                group![("b_c_int".to_string(), Field::Null)]
-            )],
-            row![(
-                "b_struct".to_string(),
-                group![("b_c_int".to_string(), Field::Null)]
-            )],
-            row![(
-                "b_struct".to_string(),
-                group![("b_c_int".to_string(), Field::Null)]
-            )],
-            row![(
-                "b_struct".to_string(),
-                group![("b_c_int".to_string(), Field::Null)]
-            )],
+            row![("b_struct".to_string(), group![("b_c_int".to_string(), Field::Null)])],
+            row![("b_struct".to_string(), group![("b_c_int".to_string(), Field::Null)])],
+            row![("b_struct".to_string(), group![("b_c_int".to_string(), Field::Null)])],
+            row![("b_struct".to_string(), group![("b_c_int".to_string(), Field::Null)])],
+            row![("b_struct".to_string(), group![("b_c_int".to_string(), Field::Null)])],
+            row![("b_struct".to_string(), group![("b_c_int".to_string(), Field::Null)])],
+            row![("b_struct".to_string(), group![("b_c_int".to_string(), Field::Null)])],
+            row![("b_struct".to_string(), group![("b_c_int".to_string(), Field::Null)])],
         ];
         assert_eq!(rows, expected_rows);
     }
@@ -872,38 +694,15 @@ mod tests {
         let expected_rows = vec![row![
             ("ID".to_string(), Field::Long(8)),
             ("Int_Array".to_string(), list![Field::Int(-1)]),
-            (
-                "int_array_array".to_string(),
-                list![list![Field::Int(-1), Field::Int(-2)], list![]]
-            ),
-            (
-                "Int_Map".to_string(),
-                map![(Field::Str("k1".to_string()), Field::Int(-1))]
-            ),
-            (
-                "int_map_array".to_string(),
-                list![
-                    map![],
-                    map![(Field::Str("k1".to_string()), Field::Int(1))],
-                    map![],
-                    map![]
-                ]
-            ),
+            ("int_array_array".to_string(), list![list![Field::Int(-1), Field::Int(-2)], list![]]),
+            ("Int_Map".to_string(), map![(Field::Str("k1".to_string()), Field::Int(-1))]),
+            ("int_map_array".to_string(), list![map![], map![(Field::Str("k1".to_string()), Field::Int(1))], map![], map![]]),
             (
                 "nested_Struct".to_string(),
                 group![
                     ("a".to_string(), Field::Int(-1)),
                     ("B".to_string(), list![Field::Int(-1)]),
-                    (
-                        "c".to_string(),
-                        group![(
-                            "D".to_string(),
-                            list![list![group![
-                                ("e".to_string(), Field::Int(-1)),
-                                ("f".to_string(), Field::Str("nonnullable".to_string()))
-                            ]]]
-                        )]
-                    ),
+                    ("c".to_string(), group![("D".to_string(), list![list![group![("e".to_string(), Field::Int(-1)), ("f".to_string(), Field::Str("nonnullable".to_string()))]]])]),
                     ("G".to_string(), map![])
                 ]
             )
@@ -917,28 +716,10 @@ mod tests {
         let expected_rows = vec![
             row![
                 ("id".to_string(), Field::Long(1)),
-                (
-                    "int_array".to_string(),
-                    list![Field::Int(1), Field::Int(2), Field::Int(3)]
-                ),
-                (
-                    "int_array_Array".to_string(),
-                    list![
-                        list![Field::Int(1), Field::Int(2)],
-                        list![Field::Int(3), Field::Int(4)]
-                    ]
-                ),
-                (
-                    "int_map".to_string(),
-                    map![
-                        (Field::Str("k1".to_string()), Field::Int(1)),
-                        (Field::Str("k2".to_string()), Field::Int(100))
-                    ]
-                ),
-                (
-                    "int_Map_Array".to_string(),
-                    list![map![(Field::Str("k1".to_string()), Field::Int(1))]]
-                ),
+                ("int_array".to_string(), list![Field::Int(1), Field::Int(2), Field::Int(3)]),
+                ("int_array_Array".to_string(), list![list![Field::Int(1), Field::Int(2)], list![Field::Int(3), Field::Int(4)]]),
+                ("int_map".to_string(), map![(Field::Str("k1".to_string()), Field::Int(1)), (Field::Str("k2".to_string()), Field::Int(100))]),
+                ("int_Map_Array".to_string(), list![map![(Field::Str("k1".to_string()), Field::Int(1))]]),
                 (
                     "nested_struct".to_string(),
                     group![
@@ -950,81 +731,23 @@ mod tests {
                                 "d".to_string(),
                                 list![
                                     list![
-                                        group![
-                                            ("E".to_string(), Field::Int(10)),
-                                            (
-                                                "F".to_string(),
-                                                Field::Str("aaa".to_string())
-                                            )
-                                        ],
-                                        group![
-                                            ("E".to_string(), Field::Int(-10)),
-                                            (
-                                                "F".to_string(),
-                                                Field::Str("bbb".to_string())
-                                            )
-                                        ]
+                                        group![("E".to_string(), Field::Int(10)), ("F".to_string(), Field::Str("aaa".to_string()))],
+                                        group![("E".to_string(), Field::Int(-10)), ("F".to_string(), Field::Str("bbb".to_string()))]
                                     ],
-                                    list![group![
-                                        ("E".to_string(), Field::Int(11)),
-                                        ("F".to_string(), Field::Str("c".to_string()))
-                                    ]]
+                                    list![group![("E".to_string(), Field::Int(11)), ("F".to_string(), Field::Str("c".to_string()))]]
                                 ]
                             )]
                         ),
-                        (
-                            "g".to_string(),
-                            map![(
-                                Field::Str("foo".to_string()),
-                                group![(
-                                    "H".to_string(),
-                                    group![("i".to_string(), list![Field::Double(1.1)])]
-                                )]
-                            )]
-                        )
+                        ("g".to_string(), map![(Field::Str("foo".to_string()), group![("H".to_string(), group![("i".to_string(), list![Field::Double(1.1)])])])])
                     ]
                 )
             ],
             row![
                 ("id".to_string(), Field::Long(2)),
-                (
-                    "int_array".to_string(),
-                    list![
-                        Field::Null,
-                        Field::Int(1),
-                        Field::Int(2),
-                        Field::Null,
-                        Field::Int(3),
-                        Field::Null
-                    ]
-                ),
-                (
-                    "int_array_Array".to_string(),
-                    list![
-                        list![Field::Null, Field::Int(1), Field::Int(2), Field::Null],
-                        list![Field::Int(3), Field::Null, Field::Int(4)],
-                        list![],
-                        Field::Null
-                    ]
-                ),
-                (
-                    "int_map".to_string(),
-                    map![
-                        (Field::Str("k1".to_string()), Field::Int(2)),
-                        (Field::Str("k2".to_string()), Field::Null)
-                    ]
-                ),
-                (
-                    "int_Map_Array".to_string(),
-                    list![
-                        map![
-                            (Field::Str("k3".to_string()), Field::Null),
-                            (Field::Str("k1".to_string()), Field::Int(1))
-                        ],
-                        Field::Null,
-                        map![]
-                    ]
-                ),
+                ("int_array".to_string(), list![Field::Null, Field::Int(1), Field::Int(2), Field::Null, Field::Int(3), Field::Null]),
+                ("int_array_Array".to_string(), list![list![Field::Null, Field::Int(1), Field::Int(2), Field::Null], list![Field::Int(3), Field::Null, Field::Int(4)], list![], Field::Null]),
+                ("int_map".to_string(), map![(Field::Str("k1".to_string()), Field::Int(2)), (Field::Str("k2".to_string()), Field::Null)]),
+                ("int_Map_Array".to_string(), list![map![(Field::Str("k3".to_string()), Field::Null), (Field::Str("k1".to_string()), Field::Int(1))], Field::Null, map![]]),
                 (
                     "nested_struct".to_string(),
                     group![
@@ -1036,43 +759,13 @@ mod tests {
                                 "d".to_string(),
                                 list![
                                     list![
-                                        group![
-                                            ("E".to_string(), Field::Null),
-                                            ("F".to_string(), Field::Null)
-                                        ],
-                                        group![
-                                            ("E".to_string(), Field::Int(10)),
-                                            (
-                                                "F".to_string(),
-                                                Field::Str("aaa".to_string())
-                                            )
-                                        ],
-                                        group![
-                                            ("E".to_string(), Field::Null),
-                                            ("F".to_string(), Field::Null)
-                                        ],
-                                        group![
-                                            ("E".to_string(), Field::Int(-10)),
-                                            (
-                                                "F".to_string(),
-                                                Field::Str("bbb".to_string())
-                                            )
-                                        ],
-                                        group![
-                                            ("E".to_string(), Field::Null),
-                                            ("F".to_string(), Field::Null)
-                                        ]
+                                        group![("E".to_string(), Field::Null), ("F".to_string(), Field::Null)],
+                                        group![("E".to_string(), Field::Int(10)), ("F".to_string(), Field::Str("aaa".to_string()))],
+                                        group![("E".to_string(), Field::Null), ("F".to_string(), Field::Null)],
+                                        group![("E".to_string(), Field::Int(-10)), ("F".to_string(), Field::Str("bbb".to_string()))],
+                                        group![("E".to_string(), Field::Null), ("F".to_string(), Field::Null)]
                                     ],
-                                    list![
-                                        group![
-                                            ("E".to_string(), Field::Int(11)),
-                                            (
-                                                "F".to_string(),
-                                                Field::Str("c".to_string())
-                                            )
-                                        ],
-                                        Field::Null
-                                    ],
+                                    list![group![("E".to_string(), Field::Int(11)), ("F".to_string(), Field::Str("c".to_string()))], Field::Null],
                                     list![],
                                     Field::Null
                                 ]
@@ -1081,35 +774,11 @@ mod tests {
                         (
                             "g".to_string(),
                             map![
-                                (
-                                    Field::Str("g1".to_string()),
-                                    group![(
-                                        "H".to_string(),
-                                        group![(
-                                            "i".to_string(),
-                                            list![Field::Double(2.2), Field::Null]
-                                        )]
-                                    )]
-                                ),
-                                (
-                                    Field::Str("g2".to_string()),
-                                    group![(
-                                        "H".to_string(),
-                                        group![("i".to_string(), list![])]
-                                    )]
-                                ),
+                                (Field::Str("g1".to_string()), group![("H".to_string(), group![("i".to_string(), list![Field::Double(2.2), Field::Null])])]),
+                                (Field::Str("g2".to_string()), group![("H".to_string(), group![("i".to_string(), list![])])]),
                                 (Field::Str("g3".to_string()), Field::Null),
-                                (
-                                    Field::Str("g4".to_string()),
-                                    group![(
-                                        "H".to_string(),
-                                        group![("i".to_string(), Field::Null)]
-                                    )]
-                                ),
-                                (
-                                    Field::Str("g5".to_string()),
-                                    group![("H".to_string(), Field::Null)]
-                                )
+                                (Field::Str("g4".to_string()), group![("H".to_string(), group![("i".to_string(), Field::Null)])]),
+                                (Field::Str("g5".to_string()), group![("H".to_string(), Field::Null)])
                             ]
                         )
                     ]
@@ -1123,12 +792,7 @@ mod tests {
                 ("int_Map_Array".to_string(), list![Field::Null, Field::Null]),
                 (
                     "nested_struct".to_string(),
-                    group![
-                        ("A".to_string(), Field::Null),
-                        ("b".to_string(), Field::Null),
-                        ("C".to_string(), group![("d".to_string(), list![])]),
-                        ("g".to_string(), map![])
-                    ]
+                    group![("A".to_string(), Field::Null), ("b".to_string(), Field::Null), ("C".to_string(), group![("d".to_string(), list![])]), ("g".to_string(), map![])]
                 )
             ],
             row![
@@ -1139,12 +803,7 @@ mod tests {
                 ("int_Map_Array".to_string(), list![]),
                 (
                     "nested_struct".to_string(),
-                    group![
-                        ("A".to_string(), Field::Null),
-                        ("b".to_string(), Field::Null),
-                        ("C".to_string(), group![("d".to_string(), Field::Null)]),
-                        ("g".to_string(), Field::Null)
-                    ]
+                    group![("A".to_string(), Field::Null), ("b".to_string(), Field::Null), ("C".to_string(), group![("d".to_string(), Field::Null)]), ("g".to_string(), Field::Null)]
                 )
             ],
             row![
@@ -1159,19 +818,7 @@ mod tests {
                         ("A".to_string(), Field::Null),
                         ("b".to_string(), Field::Null),
                         ("C".to_string(), Field::Null),
-                        (
-                            "g".to_string(),
-                            map![(
-                                Field::Str("foo".to_string()),
-                                group![(
-                                    "H".to_string(),
-                                    group![(
-                                        "i".to_string(),
-                                        list![Field::Double(2.2), Field::Double(3.3)]
-                                    )]
-                                )]
-                            )]
-                        )
+                        ("g".to_string(), map![(Field::Str("foo".to_string()), group![("H".to_string(), group![("i".to_string(), list![Field::Double(2.2), Field::Double(3.3)])])])])
                     ]
                 )
             ],
@@ -1186,33 +833,15 @@ mod tests {
             row![
                 ("id".to_string(), Field::Long(7)),
                 ("int_array".to_string(), Field::Null),
-                (
-                    "int_array_Array".to_string(),
-                    list![Field::Null, list![Field::Int(5), Field::Int(6)]]
-                ),
-                (
-                    "int_map".to_string(),
-                    map![
-                        (Field::Str("k1".to_string()), Field::Null),
-                        (Field::Str("k3".to_string()), Field::Null)
-                    ]
-                ),
+                ("int_array_Array".to_string(), list![Field::Null, list![Field::Int(5), Field::Int(6)]]),
+                ("int_map".to_string(), map![(Field::Str("k1".to_string()), Field::Null), (Field::Str("k3".to_string()), Field::Null)]),
                 ("int_Map_Array".to_string(), Field::Null),
                 (
                     "nested_struct".to_string(),
                     group![
                         ("A".to_string(), Field::Int(7)),
-                        (
-                            "b".to_string(),
-                            list![Field::Int(2), Field::Int(3), Field::Null]
-                        ),
-                        (
-                            "C".to_string(),
-                            group![(
-                                "d".to_string(),
-                                list![list![], list![Field::Null], Field::Null]
-                            )]
-                        ),
+                        ("b".to_string(), list![Field::Int(2), Field::Int(3), Field::Null]),
+                        ("C".to_string(), group![("d".to_string(), list![list![], list![Field::Null], Field::Null])]),
                         ("g".to_string(), Field::Null)
                     ]
                 )
@@ -1230,33 +859,14 @@ mod tests {
       }
     ";
         let schema = parse_message_type(&schema).unwrap();
-        let rows =
-            test_file_reader_rows("nested_maps.snappy.parquet", Some(schema)).unwrap();
+        let rows = test_file_reader_rows("nested_maps.snappy.parquet", Some(schema)).unwrap();
         let expected_rows = vec![
-            row![
-                ("c".to_string(), Field::Double(1.0)),
-                ("b".to_string(), Field::Int(1))
-            ],
-            row![
-                ("c".to_string(), Field::Double(1.0)),
-                ("b".to_string(), Field::Int(1))
-            ],
-            row![
-                ("c".to_string(), Field::Double(1.0)),
-                ("b".to_string(), Field::Int(1))
-            ],
-            row![
-                ("c".to_string(), Field::Double(1.0)),
-                ("b".to_string(), Field::Int(1))
-            ],
-            row![
-                ("c".to_string(), Field::Double(1.0)),
-                ("b".to_string(), Field::Int(1))
-            ],
-            row![
-                ("c".to_string(), Field::Double(1.0)),
-                ("b".to_string(), Field::Int(1))
-            ],
+            row![("c".to_string(), Field::Double(1.0)), ("b".to_string(), Field::Int(1))],
+            row![("c".to_string(), Field::Double(1.0)), ("b".to_string(), Field::Int(1))],
+            row![("c".to_string(), Field::Double(1.0)), ("b".to_string(), Field::Int(1))],
+            row![("c".to_string(), Field::Double(1.0)), ("b".to_string(), Field::Int(1))],
+            row![("c".to_string(), Field::Double(1.0)), ("b".to_string(), Field::Int(1))],
+            row![("c".to_string(), Field::Double(1.0)), ("b".to_string(), Field::Int(1))],
         ];
         assert_eq!(rows, expected_rows);
     }
@@ -1279,49 +889,14 @@ mod tests {
       }
     ";
         let schema = parse_message_type(&schema).unwrap();
-        let rows =
-            test_file_reader_rows("nested_maps.snappy.parquet", Some(schema)).unwrap();
+        let rows = test_file_reader_rows("nested_maps.snappy.parquet", Some(schema)).unwrap();
         let expected_rows = vec![
-            row![(
-                "a".to_string(),
-                map![(
-                    Field::Str("a".to_string()),
-                    map![
-                        (Field::Int(1), Field::Bool(true)),
-                        (Field::Int(2), Field::Bool(false))
-                    ]
-                )]
-            )],
-            row![(
-                "a".to_string(),
-                map![(
-                    Field::Str("b".to_string()),
-                    map![(Field::Int(1), Field::Bool(true))]
-                )]
-            )],
-            row![(
-                "a".to_string(),
-                map![(Field::Str("c".to_string()), Field::Null)]
-            )],
+            row![("a".to_string(), map![(Field::Str("a".to_string()), map![(Field::Int(1), Field::Bool(true)), (Field::Int(2), Field::Bool(false))])])],
+            row![("a".to_string(), map![(Field::Str("b".to_string()), map![(Field::Int(1), Field::Bool(true))])])],
+            row![("a".to_string(), map![(Field::Str("c".to_string()), Field::Null)])],
             row![("a".to_string(), map![(Field::Str("d".to_string()), map![])])],
-            row![(
-                "a".to_string(),
-                map![(
-                    Field::Str("e".to_string()),
-                    map![(Field::Int(1), Field::Bool(true))]
-                )]
-            )],
-            row![(
-                "a".to_string(),
-                map![(
-                    Field::Str("f".to_string()),
-                    map![
-                        (Field::Int(3), Field::Bool(true)),
-                        (Field::Int(4), Field::Bool(false)),
-                        (Field::Int(5), Field::Bool(true))
-                    ]
-                )]
-            )],
+            row![("a".to_string(), map![(Field::Str("e".to_string()), map![(Field::Int(1), Field::Bool(true))])])],
+            row![("a".to_string(), map![(Field::Str("f".to_string()), map![(Field::Int(3), Field::Bool(true)), (Field::Int(4), Field::Bool(false)), (Field::Int(5), Field::Bool(true))])])],
         ];
         assert_eq!(rows, expected_rows);
     }
@@ -1346,37 +921,23 @@ mod tests {
       }
     ";
         let schema = parse_message_type(&schema).unwrap();
-        let rows =
-            test_file_reader_rows("nested_lists.snappy.parquet", Some(schema)).unwrap();
+        let rows = test_file_reader_rows("nested_lists.snappy.parquet", Some(schema)).unwrap();
         let expected_rows = vec![
             row![(
                 "a".to_string(),
-                list![
-                    list![
-                        list![Field::Str("a".to_string()), Field::Str("b".to_string())],
-                        list![Field::Str("c".to_string())]
-                    ],
-                    list![Field::Null, list![Field::Str("d".to_string())]]
-                ]
+                list![list![list![Field::Str("a".to_string()), Field::Str("b".to_string())], list![Field::Str("c".to_string())]], list![Field::Null, list![Field::Str("d".to_string())]]]
             )],
             row![(
                 "a".to_string(),
                 list![
-                    list![
-                        list![Field::Str("a".to_string()), Field::Str("b".to_string())],
-                        list![Field::Str("c".to_string()), Field::Str("d".to_string())]
-                    ],
+                    list![list![Field::Str("a".to_string()), Field::Str("b".to_string())], list![Field::Str("c".to_string()), Field::Str("d".to_string())]],
                     list![Field::Null, list![Field::Str("e".to_string())]]
                 ]
             )],
             row![(
                 "a".to_string(),
                 list![
-                    list![
-                        list![Field::Str("a".to_string()), Field::Str("b".to_string())],
-                        list![Field::Str("c".to_string()), Field::Str("d".to_string())],
-                        list![Field::Str("e".to_string())]
-                    ],
+                    list![list![Field::Str("a".to_string()), Field::Str("b".to_string())], list![Field::Str("c".to_string()), Field::Str("d".to_string())], list![Field::Str("e".to_string())]],
                     list![Field::Null, list![Field::Str("f".to_string())]]
                 ]
             )],
@@ -1395,10 +956,7 @@ mod tests {
         let schema = parse_message_type(&schema).unwrap();
         let res = test_file_reader_rows("nested_maps.snappy.parquet", Some(schema));
         assert!(res.is_err());
-        assert_eq!(
-            res.unwrap_err(),
-            general_err!("Root schema does not contain projection")
-        );
+        assert_eq!(res.unwrap_err(), general_err!("Root schema does not contain projection"));
     }
 
     #[test]
@@ -1412,10 +970,7 @@ mod tests {
         let schema = parse_message_type(&schema).unwrap();
         let res = test_row_group_rows("nested_maps.snappy.parquet", Some(schema));
         assert!(res.is_err());
-        assert_eq!(
-            res.unwrap_err(),
-            general_err!("Root schema does not contain projection")
-        );
+        assert_eq!(res.unwrap_err(), general_err!("Root schema does not contain projection"));
     }
 
     #[test]
@@ -1445,46 +1000,16 @@ mod tests {
         // We parse it as struct with `phone` repeated field as array.
         let rows = test_file_reader_rows("repeated_no_annotation.parquet", None).unwrap();
         let expected_rows = vec![
-            row![
-                ("id".to_string(), Field::Int(1)),
-                ("phoneNumbers".to_string(), Field::Null)
-            ],
-            row![
-                ("id".to_string(), Field::Int(2)),
-                ("phoneNumbers".to_string(), Field::Null)
-            ],
-            row![
-                ("id".to_string(), Field::Int(3)),
-                (
-                    "phoneNumbers".to_string(),
-                    group![("phone".to_string(), list![])]
-                )
-            ],
+            row![("id".to_string(), Field::Int(1)), ("phoneNumbers".to_string(), Field::Null)],
+            row![("id".to_string(), Field::Int(2)), ("phoneNumbers".to_string(), Field::Null)],
+            row![("id".to_string(), Field::Int(3)), ("phoneNumbers".to_string(), group![("phone".to_string(), list![])])],
             row![
                 ("id".to_string(), Field::Int(4)),
-                (
-                    "phoneNumbers".to_string(),
-                    group![(
-                        "phone".to_string(),
-                        list![group![
-                            ("number".to_string(), Field::Long(5555555555)),
-                            ("kind".to_string(), Field::Null)
-                        ]]
-                    )]
-                )
+                ("phoneNumbers".to_string(), group![("phone".to_string(), list![group![("number".to_string(), Field::Long(5555555555)), ("kind".to_string(), Field::Null)]])])
             ],
             row![
                 ("id".to_string(), Field::Int(5)),
-                (
-                    "phoneNumbers".to_string(),
-                    group![(
-                        "phone".to_string(),
-                        list![group![
-                            ("number".to_string(), Field::Long(1111111111)),
-                            ("kind".to_string(), Field::Str("home".to_string()))
-                        ]]
-                    )]
-                )
+                ("phoneNumbers".to_string(), group![("phone".to_string(), list![group![("number".to_string(), Field::Long(1111111111)), ("kind".to_string(), Field::Str("home".to_string()))]])])
             ],
             row![
                 ("id".to_string(), Field::Int(6)),
@@ -1493,18 +1018,9 @@ mod tests {
                     group![(
                         "phone".to_string(),
                         list![
-                            group![
-                                ("number".to_string(), Field::Long(1111111111)),
-                                ("kind".to_string(), Field::Str("home".to_string()))
-                            ],
-                            group![
-                                ("number".to_string(), Field::Long(2222222222)),
-                                ("kind".to_string(), Field::Null)
-                            ],
-                            group![
-                                ("number".to_string(), Field::Long(3333333333)),
-                                ("kind".to_string(), Field::Str("mobile".to_string()))
-                            ]
+                            group![("number".to_string(), Field::Long(1111111111)), ("kind".to_string(), Field::Str("home".to_string()))],
+                            group![("number".to_string(), Field::Long(2222222222)), ("kind".to_string(), Field::Null)],
+                            group![("number".to_string(), Field::Long(3333333333)), ("kind".to_string(), Field::Str("mobile".to_string()))]
                         ]
                     )]
                 )

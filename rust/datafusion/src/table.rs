@@ -48,11 +48,7 @@ mod tests {
 
         let t = ctx.table("aggregate_test_100").unwrap();
 
-        let example = t
-            .select_columns(vec!["c1", "c2", "c11"])
-            .unwrap()
-            .limit(10)
-            .unwrap();
+        let example = t.select_columns(vec!["c1", "c2", "c11"]).unwrap().limit(10).unwrap();
 
         let plan = example.to_logical_plan();
 
@@ -62,12 +58,7 @@ mod tests {
     fn register_aggregate_csv(ctx: &mut ExecutionContext) {
         let schema = aggr_test_schema();
         let testdata = env::var("ARROW_TEST_DATA").expect("ARROW_TEST_DATA not defined");
-        ctx.register_csv(
-            "aggregate_test_100",
-            &format!("{}/csv/aggregate_test_100.csv", testdata),
-            &schema,
-            true,
-        );
+        ctx.register_csv("aggregate_test_100", &format!("{}/csv/aggregate_test_100.csv", testdata), &schema, true);
     }
 
     fn aggr_test_schema() -> Arc<Schema> {

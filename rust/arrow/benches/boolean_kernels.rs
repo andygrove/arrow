@@ -40,18 +40,12 @@ fn create_boolean_array(size: usize) -> BooleanArray {
 }
 
 /// Helper function to implement `AND` and `OR` without SIMD
-pub fn bin_op_no_simd<F>(
-    left: &BooleanArray,
-    right: &BooleanArray,
-    op: F,
-) -> Result<BooleanArray>
+pub fn bin_op_no_simd<F>(left: &BooleanArray, right: &BooleanArray, op: F) -> Result<BooleanArray>
 where
     F: Fn(bool, bool) -> bool,
 {
     if left.len() != right.len() {
-        return Err(ArrowError::ComputeError(
-            "Cannot perform boolean operation on arrays of different length".to_string(),
-        ));
+        return Err(ArrowError::ComputeError("Cannot perform boolean operation on arrays of different length".to_string()));
     }
     let mut b = BooleanArray::builder(left.len());
     for i in 0..left.len() {
@@ -113,13 +107,9 @@ fn bench_not_simd(size: usize) {
 }
 
 fn add_benchmark(c: &mut Criterion) {
-    c.bench_function("and", |b| {
-        b.iter(|| bench_bin_op_no_simd(512, |a, b| a && b))
-    });
+    c.bench_function("and", |b| b.iter(|| bench_bin_op_no_simd(512, |a, b| a && b)));
     c.bench_function("and simd", |b| b.iter(|| bench_and_simd(512)));
-    c.bench_function("or", |b| {
-        b.iter(|| bench_bin_op_no_simd(512, |a, b| a || b))
-    });
+    c.bench_function("or", |b| b.iter(|| bench_bin_op_no_simd(512, |a, b| a || b)));
     c.bench_function("or simd", |b| b.iter(|| bench_or_simd(512)));
     c.bench_function("not", |b| b.iter(|| bench_not_no_simd(512)));
     c.bench_function("not simd", |b| b.iter(|| bench_not_simd(512)));

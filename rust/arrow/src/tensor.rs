@@ -28,9 +28,7 @@ use crate::datatypes::*;
 fn compute_row_major_strides<T: ArrowPrimitiveType>(shape: &Vec<usize>) -> Vec<usize> {
     let mut remaining_bytes = mem::size_of::<T::Native>();
     for i in shape {
-        remaining_bytes = remaining_bytes
-            .checked_mul(*i)
-            .expect("Overflow occurred when computing row major strides.");
+        remaining_bytes = remaining_bytes.checked_mul(*i).expect("Overflow occurred when computing row major strides.");
     }
 
     let mut strides = Vec::<usize>::new();
@@ -47,9 +45,7 @@ fn compute_column_major_strides<T: ArrowPrimitiveType>(shape: &Vec<usize>) -> Ve
     let mut strides = Vec::<usize>::new();
     for i in shape {
         strides.push(remaining_bytes);
-        remaining_bytes = remaining_bytes
-            .checked_mul(*i)
-            .expect("Overflow occurred when computing column major strides.");
+        remaining_bytes = remaining_bytes.checked_mul(*i).expect("Overflow occurred when computing column major strides.");
     }
     strides
 }
@@ -78,39 +74,16 @@ pub type Float64Tensor<'a> = Tensor<'a, Float64Type>;
 
 impl<'a, T: ArrowPrimitiveType> Tensor<'a, T> {
     /// Creates a new `Tensor`
-    pub fn new(
-        buffer: Buffer,
-        shape: Option<Vec<usize>>,
-        strides: Option<Vec<usize>>,
-        names: Option<Vec<&'a str>>,
-    ) -> Self {
+    pub fn new(buffer: Buffer, shape: Option<Vec<usize>>, strides: Option<Vec<usize>>, names: Option<Vec<&'a str>>) -> Self {
         match &shape {
             None => {
-                assert_eq!(
-                    buffer.len(),
-                    mem::size_of::<T::Native>(),
-                    "underlying buffer should only contain a single tensor element"
-                );
+                assert_eq!(buffer.len(), mem::size_of::<T::Native>(), "underlying buffer should only contain a single tensor element");
                 assert_eq!(None, strides);
                 assert_eq!(None, names);
             }
             Some(ref s) => {
-                strides
-                    .iter()
-                    .map(|i| {
-                        assert_eq!(s.len(), i.len(), "shape and stride dimensions differ")
-                    })
-                    .next();
-                names
-                    .iter()
-                    .map(|i| {
-                        assert_eq!(
-                            s.len(),
-                            i.len(),
-                            "number of dimensions and number of dimension names differ"
-                        )
-                    })
-                    .next();
+                strides.iter().map(|i| assert_eq!(s.len(), i.len(), "shape and stride dimensions differ")).next();
+                names.iter().map(|i| assert_eq!(s.len(), i.len(), "number of dimensions and number of dimension names differ")).next();
             }
         };
         Self {
@@ -124,11 +97,7 @@ impl<'a, T: ArrowPrimitiveType> Tensor<'a, T> {
     }
 
     /// Creates a new Tensor using row major memory layout
-    pub fn new_row_major(
-        buffer: Buffer,
-        shape: Option<Vec<usize>>,
-        names: Option<Vec<&'a str>>,
-    ) -> Self {
+    pub fn new_row_major(buffer: Buffer, shape: Option<Vec<usize>>, names: Option<Vec<&'a str>>) -> Self {
         let strides = match &shape {
             None => None,
             Some(ref s) => Some(compute_row_major_strides::<T>(&s)),
@@ -137,11 +106,7 @@ impl<'a, T: ArrowPrimitiveType> Tensor<'a, T> {
     }
 
     /// Creates a new Tensor using column major memory layout
-    pub fn new_column_major(
-        buffer: Buffer,
-        shape: Option<Vec<usize>>,
-        names: Option<Vec<&'a str>>,
-    ) -> Self {
+    pub fn new_column_major(buffer: Buffer, shape: Option<Vec<usize>>, names: Option<Vec<&'a str>>) -> Self {
         let strides = match &shape {
             None => None,
             Some(ref s) => Some(compute_column_major_strides::<T>(&s)),
@@ -226,34 +191,16 @@ mod tests {
 
     #[test]
     fn test_compute_row_major_strides() {
-        assert_eq!(
-            vec![48, 8],
-            compute_row_major_strides::<Int64Type>(&vec![4_usize, 6])
-        );
-        assert_eq!(
-            vec![24, 4],
-            compute_row_major_strides::<Int32Type>(&vec![4_usize, 6])
-        );
-        assert_eq!(
-            vec![6, 1],
-            compute_row_major_strides::<Int8Type>(&vec![4_usize, 6])
-        );
+        assert_eq!(vec![48, 8], compute_row_major_strides::<Int64Type>(&vec![4_usize, 6]));
+        assert_eq!(vec![24, 4], compute_row_major_strides::<Int32Type>(&vec![4_usize, 6]));
+        assert_eq!(vec![6, 1], compute_row_major_strides::<Int8Type>(&vec![4_usize, 6]));
     }
 
     #[test]
     fn test_compute_column_major_strides() {
-        assert_eq!(
-            vec![8, 32],
-            compute_column_major_strides::<Int64Type>(&vec![4_usize, 6])
-        );
-        assert_eq!(
-            vec![4, 16],
-            compute_column_major_strides::<Int32Type>(&vec![4_usize, 6])
-        );
-        assert_eq!(
-            vec![1, 4],
-            compute_column_major_strides::<Int8Type>(&vec![4_usize, 6])
-        );
+        assert_eq!(vec![8, 32], compute_column_major_strides::<Int64Type>(&vec![4_usize, 6]));
+        assert_eq!(vec![4, 16], compute_column_major_strides::<Int32Type>(&vec![4_usize, 6]));
+        assert_eq!(vec![1, 4], compute_column_major_strides::<Int8Type>(&vec![4_usize, 6]));
     }
 
     #[test]
@@ -362,20 +309,13 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "number of dimensions and number of dimension names differ"
-    )]
+    #[should_panic(expected = "number of dimensions and number of dimension names differ")]
     fn test_inconsistent_names() {
         let mut builder = Int32BufferBuilder::new(16);
         for i in 0..16 {
             builder.append(i).unwrap();
         }
         let buf = builder.finish();
-        Int32Tensor::new(
-            buf,
-            Some(vec![2, 8]),
-            Some(vec![4, 8]),
-            Some(vec!["1", "2", "3"]),
-        );
+        Int32Tensor::new(buf, Some(vec![2, 8]), Some(vec![4, 8]), Some(vec!["1", "2", "3"]));
     }
 }

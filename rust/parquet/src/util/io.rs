@@ -57,10 +57,7 @@ impl<R: ParquetReader> FileSource<R> {
 
 impl<R: ParquetReader> Read for FileSource<R> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let mut reader = self
-            .reader
-            .lock()
-            .map_err(|err| Error::new(ErrorKind::Other, err.to_string()))?;
+        let mut reader = self.reader.lock().map_err(|err| Error::new(ErrorKind::Other, err.to_string()))?;
 
         let bytes_to_read = cmp::min(buf.len(), (self.end - self.start) as usize);
         let buf = &mut buf[0..bytes_to_read];
@@ -96,10 +93,7 @@ impl FileSink {
     pub fn new(file: &File) -> Self {
         let mut owned_file = file.try_clone().unwrap();
         let pos = owned_file.seek(SeekFrom::Current(0)).unwrap();
-        Self {
-            buf: BufWriter::new(owned_file),
-            pos,
-        }
+        Self { buf: BufWriter::new(owned_file), pos }
     }
 }
 
@@ -187,8 +181,7 @@ mod tests {
         let mut file = get_test_file("alltypes_plain.parquet");
         let mut src = FileSource::new(&file, 0, 4);
 
-        file.seek(SeekFrom::Start(5 as u64))
-            .expect("File seek to a position");
+        file.seek(SeekFrom::Start(5 as u64)).expect("File seek to a position");
 
         let bytes_read = src.read(&mut buf[..]).unwrap();
         assert_eq!(bytes_read, 4);
@@ -212,8 +205,7 @@ mod tests {
 
         // Read data using file chunk
         let mut res = vec![0u8; 7];
-        let mut chunk =
-            FileSource::new(&file, 0, file.metadata().unwrap().len() as usize);
+        let mut chunk = FileSource::new(&file, 0, file.metadata().unwrap().len() as usize);
         chunk.read(&mut res[..]).unwrap();
 
         assert_eq!(res, vec![b'a', b'b', b'c', b'd', b'e', b'f', b'g']);

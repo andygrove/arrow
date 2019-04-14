@@ -33,17 +33,11 @@ use arrow::datatypes::{DataType, DateUnit, Field, Schema};
 
 /// Convert parquet schema to arrow schema.
 pub fn parquet_to_arrow_schema(parquet_schema: SchemaDescPtr) -> Result<Schema> {
-    parquet_to_arrow_schema_by_columns(
-        parquet_schema.clone(),
-        0..parquet_schema.columns().len(),
-    )
+    parquet_to_arrow_schema_by_columns(parquet_schema.clone(), 0..parquet_schema.columns().len())
 }
 
 /// Convert parquet schema to arrow schema, only preserving some leaf columns.
-pub fn parquet_to_arrow_schema_by_columns<T>(
-    parquet_schema: SchemaDescPtr,
-    column_indices: T,
-) -> Result<Schema>
+pub fn parquet_to_arrow_schema_by_columns<T>(parquet_schema: SchemaDescPtr, column_indices: T) -> Result<Schema>
 where
     T: IntoIterator<Item = usize>,
 {
@@ -82,10 +76,7 @@ struct ParquetTypeConverter {
 
 impl ParquetTypeConverter {
     fn new(schema: TypePtr, columns_to_convert: Rc<HashSet<*const Type>>) -> Self {
-        Self {
-            schema,
-            columns_to_convert,
-        }
+        Self { schema, columns_to_convert }
     }
 
     fn clone_with_schema(&self, other: TypePtr) -> Self {
@@ -121,9 +112,7 @@ impl ParquetTypeConverter {
     /// [`to_data_type`](`ParquetTypeConverter::to_data_type`), except it reserves schema
     /// name.
     fn to_field(&self) -> Result<Option<Field>> {
-        self.to_data_type().map(|opt| {
-            opt.map(|dt| Field::new(self.schema.name(), dt, self.is_nullable()))
-        })
+        self.to_data_type().map(|opt| opt.map(|dt| Field::new(self.schema.name(), dt, self.is_nullable())))
     }
 
     // Utility functions.
@@ -149,8 +138,7 @@ impl ParquetTypeConverter {
     }
 
     fn is_self_included(&self) -> bool {
-        self.columns_to_convert
-            .contains(&(self.schema.as_ref() as *const Type))
+        self.columns_to_convert.contains(&(self.schema.as_ref() as *const Type))
     }
 
     // Functions for primitive types.
@@ -160,13 +148,7 @@ impl ParquetTypeConverter {
     /// This function takes care of repetition.
     fn to_primitive_type(&self) -> Result<Option<DataType>> {
         if self.is_self_included() {
-            self.to_primitive_type_inner().map(|dt| {
-                if self.is_repeated() {
-                    Some(DataType::List(Box::new(dt)))
-                } else {
-                    Some(dt)
-                }
-            })
+            self.to_primitive_type_inner().map(|dt| if self.is_repeated() { Some(DataType::List(Box::new(dt))) } else { Some(dt) })
         } else {
             Ok(None)
         }
@@ -182,10 +164,7 @@ impl ParquetTypeConverter {
             PhysicalType::FLOAT => Ok(DataType::Float32),
             PhysicalType::DOUBLE => Ok(DataType::Float64),
             PhysicalType::BYTE_ARRAY => self.from_byte_array(),
-            other => Err(ArrowError(format!(
-                "Unable to convert parquet physical type {}",
-                other
-            ))),
+            other => Err(ArrowError(format!("Unable to convert parquet physical type {}", other))),
         }
     }
 
@@ -200,10 +179,7 @@ impl ParquetTypeConverter {
             LogicalType::INT_32 => Ok(DataType::Int32),
             LogicalType::DATE => Ok(DataType::Date32(DateUnit::Day)),
             LogicalType::TIME_MILLIS => Ok(DataType::Time32(TimeUnit::Millisecond)),
-            other => Err(ArrowError(format!(
-                "Unable to convert parquet INT32 logical type {}",
-                other
-            ))),
+            other => Err(ArrowError(format!("Unable to convert parquet INT32 logical type {}", other))),
         }
     }
 
@@ -213,16 +189,9 @@ impl ParquetTypeConverter {
             LogicalType::INT_64 => Ok(DataType::Int64),
             LogicalType::UINT_64 => Ok(DataType::UInt64),
             LogicalType::TIME_MICROS => Ok(DataType::Time64(TimeUnit::Microsecond)),
-            LogicalType::TIMESTAMP_MILLIS => {
-                Ok(DataType::Timestamp(TimeUnit::Millisecond))
-            }
-            LogicalType::TIMESTAMP_MICROS => {
-                Ok(DataType::Timestamp(TimeUnit::Microsecond))
-            }
-            other => Err(ArrowError(format!(
-                "Unable to convert parquet INT64 logical type {}",
-                other
-            ))),
+            LogicalType::TIMESTAMP_MILLIS => Ok(DataType::Timestamp(TimeUnit::Millisecond)),
+            LogicalType::TIMESTAMP_MICROS => Ok(DataType::Timestamp(TimeUnit::Microsecond)),
+            other => Err(ArrowError(format!("Unable to convert parquet INT64 logical type {}", other))),
         }
     }
 
@@ -230,10 +199,7 @@ impl ParquetTypeConverter {
         match self.schema.get_basic_info().logical_type() {
             LogicalType::NONE => Ok(DataType::Utf8),
             LogicalType::UTF8 => Ok(DataType::Utf8),
-            other => Err(ArrowError(format!(
-                "Unable to convert parquet BYTE_ARRAY logical type {}",
-                other
-            ))),
+            other => Err(ArrowError(format!("Unable to convert parquet BYTE_ARRAY logical type {}", other))),
         }
     }
 
@@ -244,8 +210,7 @@ impl ParquetTypeConverter {
     /// This function takes care of logical type and repetition.
     fn to_group_type(&self) -> Result<Option<DataType>> {
         if self.is_repeated() {
-            self.to_struct()
-                .map(|opt| opt.map(|dt| DataType::List(Box::new(dt))))
+            self.to_struct().map(|opt| opt.map(|dt| DataType::List(Box::new(dt))))
         } else {
             match self.schema.get_basic_info().logical_type() {
                 LogicalType::LIST => self.to_list(),
@@ -257,27 +222,13 @@ impl ParquetTypeConverter {
     /// Converts a parquet group type to arrow struct.
     fn to_struct(&self) -> Result<Option<DataType>> {
         match self.schema.as_ref() {
-            Type::PrimitiveType { .. } => panic!(
-                "{:?} is a struct type, and can't be processed as primitive.",
-                self.schema
-            ),
-            Type::GroupType {
-                basic_info: _,
-                fields,
-            } => fields
+            Type::PrimitiveType { .. } => panic!("{:?} is a struct type, and can't be processed as primitive.", self.schema),
+            Type::GroupType { basic_info: _, fields } => fields
                 .iter()
                 .map(|field_ptr| self.clone_with_schema(field_ptr.clone()).to_field())
                 .collect::<Result<Vec<Option<Field>>>>()
-                .map(|result| {
-                    result.into_iter().filter_map(|f| f).collect::<Vec<Field>>()
-                })
-                .map(|fields| {
-                    if fields.is_empty() {
-                        None
-                    } else {
-                        Some(DataType::Struct(fields))
-                    }
-                }),
+                .map(|result| result.into_iter().filter_map(|f| f).collect::<Vec<Field>>())
+                .map(|fields| if fields.is_empty() { None } else { Some(DataType::Struct(fields)) }),
         }
     }
 
@@ -287,14 +238,8 @@ impl ParquetTypeConverter {
     /// [parquet doc](https://github.com/apache/parquet-format/blob/master/LogicalTypes.md).
     fn to_list(&self) -> Result<Option<DataType>> {
         match self.schema.as_ref() {
-            Type::PrimitiveType { .. } => panic!(
-                "{:?} is a list type and can't be processed as primitive.",
-                self.schema
-            ),
-            Type::GroupType {
-                basic_info: _,
-                fields,
-            } if fields.len() == 1 => {
+            Type::PrimitiveType { .. } => panic!("{:?} is a list type and can't be processed as primitive.", self.schema),
+            Type::GroupType { basic_info: _, fields } if fields.len() == 1 => {
                 let list_item = fields.first().unwrap();
                 let item_converter = self.clone_with_schema(list_item.clone());
 
@@ -303,25 +248,15 @@ impl ParquetTypeConverter {
                         if item_converter.is_repeated() {
                             item_converter.to_primitive_type_inner().map(|dt| Some(dt))
                         } else {
-                            Err(ArrowError(
-                                "Primitive element type of list must be repeated."
-                                    .to_string(),
-                            ))
+                            Err(ArrowError("Primitive element type of list must be repeated.".to_string()))
                         }
                     }
-                    Type::GroupType {
-                        basic_info: _,
-                        fields,
-                    } => {
+                    Type::GroupType { basic_info: _, fields } => {
                         if fields.len() > 1 {
                             item_converter.to_struct()
-                        } else if fields.len() == 1
-                            && list_item.name() != "array"
-                            && list_item.name() != format!("{}_tuple", self.schema.name())
-                        {
+                        } else if fields.len() == 1 && list_item.name() != "array" && list_item.name() != format!("{}_tuple", self.schema.name()) {
                             let nested_item = fields.first().unwrap();
-                            let nested_item_converter =
-                                self.clone_with_schema(nested_item.clone());
+                            let nested_item_converter = self.clone_with_schema(nested_item.clone());
 
                             nested_item_converter.to_data_type()
                         } else {
@@ -332,9 +267,7 @@ impl ParquetTypeConverter {
 
                 item_type.map(|opt| opt.map(|dt| DataType::List(Box::new(dt))))
             }
-            _ => Err(ArrowError(
-                "Group element type of list can only contain one field.".to_string(),
-            )),
+            _ => Err(ArrowError("Group element type of list can only contain one field.".to_string())),
         }
     }
 }
@@ -366,8 +299,7 @@ mod tests {
         let parquet_group_type = parse_message_type(message_type).unwrap();
 
         let parquet_schema = SchemaDescriptor::new(Rc::new(parquet_group_type));
-        let converted_arrow_schema =
-            parquet_to_arrow_schema(Rc::new(parquet_schema)).unwrap();
+        let converted_arrow_schema = parquet_to_arrow_schema(Rc::new(parquet_schema)).unwrap();
 
         let arrow_fields = vec![
             Field::new("boolean", DataType::Boolean, false),
@@ -395,20 +327,12 @@ mod tests {
         let parquet_group_type = parse_message_type(message_type).unwrap();
 
         let parquet_schema = Rc::new(SchemaDescriptor::new(Rc::new(parquet_group_type)));
-        let converted_arrow_schema =
-            parquet_to_arrow_schema(parquet_schema.clone()).unwrap();
+        let converted_arrow_schema = parquet_to_arrow_schema(parquet_schema.clone()).unwrap();
 
-        let arrow_fields = vec![
-            Field::new("boolean", DataType::Boolean, false),
-            Field::new("int8", DataType::Int8, false),
-        ];
+        let arrow_fields = vec![Field::new("boolean", DataType::Boolean, false), Field::new("int8", DataType::Int8, false)];
         assert_eq!(&arrow_fields, converted_arrow_schema.fields());
 
-        let converted_arrow_schema = parquet_to_arrow_schema_by_columns(
-            parquet_schema.clone(),
-            vec![0usize, 1usize],
-        )
-        .unwrap();
+        let converted_arrow_schema = parquet_to_arrow_schema_by_columns(parquet_schema.clone(), vec![0usize, 1usize]).unwrap();
         assert_eq!(&arrow_fields, converted_arrow_schema.fields());
     }
 
@@ -474,11 +398,7 @@ mod tests {
         //   }
         // }
         {
-            arrow_fields.push(Field::new(
-                "my_list",
-                DataType::List(Box::new(DataType::Utf8)),
-                false,
-            ));
+            arrow_fields.push(Field::new("my_list", DataType::List(Box::new(DataType::Utf8)), false));
         }
 
         // // List<String> (list nullable, elements non-null)
@@ -488,11 +408,7 @@ mod tests {
         //   }
         // }
         {
-            arrow_fields.push(Field::new(
-                "my_list",
-                DataType::List(Box::new(DataType::Utf8)),
-                true,
-            ));
+            arrow_fields.push(Field::new("my_list", DataType::List(Box::new(DataType::Utf8)), true));
         }
 
         // Element types can be nested structures. For example, a list of lists:
@@ -509,11 +425,7 @@ mod tests {
         // }
         {
             let arrow_inner_list = DataType::List(Box::new(DataType::Int32));
-            arrow_fields.push(Field::new(
-                "array_of_arrays",
-                DataType::List(Box::new(arrow_inner_list)),
-                true,
-            ));
+            arrow_fields.push(Field::new("array_of_arrays", DataType::List(Box::new(arrow_inner_list)), true));
         }
 
         // // List<String> (list nullable, elements non-null)
@@ -523,11 +435,7 @@ mod tests {
         //   };
         // }
         {
-            arrow_fields.push(Field::new(
-                "my_list",
-                DataType::List(Box::new(DataType::Utf8)),
-                true,
-            ));
+            arrow_fields.push(Field::new("my_list", DataType::List(Box::new(DataType::Utf8)), true));
         }
 
         // // List<Integer> (nullable list, non-null elements)
@@ -535,11 +443,7 @@ mod tests {
         //   repeated int32 element;
         // }
         {
-            arrow_fields.push(Field::new(
-                "my_list",
-                DataType::List(Box::new(DataType::Int32)),
-                true,
-            ));
+            arrow_fields.push(Field::new("my_list", DataType::List(Box::new(DataType::Int32)), true));
         }
 
         // // List<Tuple<String, Integer>> (nullable list, non-null elements)
@@ -550,15 +454,8 @@ mod tests {
         //   };
         // }
         {
-            let arrow_struct = DataType::Struct(vec![
-                Field::new("str", DataType::Utf8, false),
-                Field::new("num", DataType::Int32, false),
-            ]);
-            arrow_fields.push(Field::new(
-                "my_list",
-                DataType::List(Box::new(arrow_struct)),
-                true,
-            ));
+            let arrow_struct = DataType::Struct(vec![Field::new("str", DataType::Utf8, false), Field::new("num", DataType::Int32, false)]);
+            arrow_fields.push(Field::new("my_list", DataType::List(Box::new(arrow_struct)), true));
         }
 
         // // List<OneTuple<String>> (nullable list, non-null elements)
@@ -569,13 +466,8 @@ mod tests {
         // }
         // Special case: group is named array
         {
-            let arrow_struct =
-                DataType::Struct(vec![Field::new("str", DataType::Utf8, false)]);
-            arrow_fields.push(Field::new(
-                "my_list",
-                DataType::List(Box::new(arrow_struct)),
-                true,
-            ));
+            let arrow_struct = DataType::Struct(vec![Field::new("str", DataType::Utf8, false)]);
+            arrow_fields.push(Field::new("my_list", DataType::List(Box::new(arrow_struct)), true));
         }
 
         // // List<OneTuple<String>> (nullable list, non-null elements)
@@ -586,30 +478,20 @@ mod tests {
         // }
         // Special case: group named ends in _tuple
         {
-            let arrow_struct =
-                DataType::Struct(vec![Field::new("str", DataType::Utf8, false)]);
-            arrow_fields.push(Field::new(
-                "my_list",
-                DataType::List(Box::new(arrow_struct)),
-                true,
-            ));
+            let arrow_struct = DataType::Struct(vec![Field::new("str", DataType::Utf8, false)]);
+            arrow_fields.push(Field::new("my_list", DataType::List(Box::new(arrow_struct)), true));
         }
 
         // One-level encoding: Only allows required lists with required cells
         //   repeated value_type name
         {
-            arrow_fields.push(Field::new(
-                "name",
-                DataType::List(Box::new(DataType::Int32)),
-                true,
-            ));
+            arrow_fields.push(Field::new("name", DataType::List(Box::new(DataType::Int32)), true));
         }
 
         let parquet_group_type = parse_message_type(message_type).unwrap();
 
         let parquet_schema = Rc::new(SchemaDescriptor::new(Rc::new(parquet_group_type)));
-        let converted_arrow_schema =
-            parquet_to_arrow_schema(parquet_schema.clone()).unwrap();
+        let converted_arrow_schema = parquet_to_arrow_schema(parquet_schema.clone()).unwrap();
         let converted_fields = converted_arrow_schema.fields();
 
         assert_eq!(arrow_fields.len(), converted_fields.len());
@@ -622,12 +504,8 @@ mod tests {
     fn test_nested_schema() {
         let mut arrow_fields = Vec::new();
         {
-            let group1_fields = vec![
-                Field::new("leaf1", DataType::Boolean, false),
-                Field::new("leaf2", DataType::Int32, false),
-            ];
-            let group1_struct =
-                Field::new("group1", DataType::Struct(group1_fields), false);
+            let group1_fields = vec![Field::new("leaf1", DataType::Boolean, false), Field::new("leaf2", DataType::Int32, false)];
+            let group1_struct = Field::new("group1", DataType::Struct(group1_fields), false);
             arrow_fields.push(group1_struct);
 
             let leaf3_field = Field::new("leaf3", DataType::Int64, false);
@@ -646,8 +524,7 @@ mod tests {
         let parquet_group_type = parse_message_type(message_type).unwrap();
 
         let parquet_schema = Rc::new(SchemaDescriptor::new(Rc::new(parquet_group_type)));
-        let converted_arrow_schema =
-            parquet_to_arrow_schema(parquet_schema.clone()).unwrap();
+        let converted_arrow_schema = parquet_to_arrow_schema(parquet_schema.clone()).unwrap();
         let converted_fields = converted_arrow_schema.fields();
 
         assert_eq!(arrow_fields.len(), converted_fields.len());
@@ -696,9 +573,7 @@ mod tests {
         // required int64 leaf5;
 
         let parquet_schema = Rc::new(SchemaDescriptor::new(Rc::new(parquet_group_type)));
-        let converted_arrow_schema =
-            parquet_to_arrow_schema_by_columns(parquet_schema.clone(), vec![0, 3, 4])
-                .unwrap();
+        let converted_arrow_schema = parquet_to_arrow_schema_by_columns(parquet_schema.clone(), vec![0, 3, 4]).unwrap();
         let converted_fields = converted_arrow_schema.fields();
 
         assert_eq!(arrow_fields.len(), converted_fields.len());
@@ -747,9 +622,7 @@ mod tests {
         // required int64 leaf5;
 
         let parquet_schema = Rc::new(SchemaDescriptor::new(Rc::new(parquet_group_type)));
-        let converted_arrow_schema =
-            parquet_to_arrow_schema_by_columns(parquet_schema.clone(), vec![3, 4, 0])
-                .unwrap();
+        let converted_arrow_schema = parquet_to_arrow_schema_by_columns(parquet_schema.clone(), vec![3, 4, 0]).unwrap();
         let converted_fields = converted_arrow_schema.fields();
 
         assert_eq!(arrow_fields.len(), converted_fields.len());
@@ -764,24 +637,9 @@ mod tests {
         {
             arrow_fields.push(Field::new("leaf1", DataType::Int32, true));
 
-            let inner_group_list = Field::new(
-                "innerGroup",
-                DataType::List(Box::new(DataType::Struct(vec![Field::new(
-                    "leaf3",
-                    DataType::Int32,
-                    true,
-                )]))),
-                true,
-            );
+            let inner_group_list = Field::new("innerGroup", DataType::List(Box::new(DataType::Struct(vec![Field::new("leaf3", DataType::Int32, true)]))), true);
 
-            let outer_group_list = Field::new(
-                "outerGroup",
-                DataType::List(Box::new(DataType::Struct(vec![
-                    Field::new("leaf2", DataType::Int32, true),
-                    inner_group_list,
-                ]))),
-                true,
-            );
+            let outer_group_list = Field::new("outerGroup", DataType::List(Box::new(DataType::Struct(vec![Field::new("leaf2", DataType::Int32, true), inner_group_list]))), true);
             arrow_fields.push(outer_group_list);
         }
 
@@ -799,8 +657,7 @@ mod tests {
         let parquet_group_type = parse_message_type(message_type).unwrap();
 
         let parquet_schema = Rc::new(SchemaDescriptor::new(Rc::new(parquet_group_type)));
-        let converted_arrow_schema =
-            parquet_to_arrow_schema(parquet_schema.clone()).unwrap();
+        let converted_arrow_schema = parquet_to_arrow_schema(parquet_schema.clone()).unwrap();
         let converted_fields = converted_arrow_schema.fields();
 
         assert_eq!(arrow_fields.len(), converted_fields.len());

@@ -33,21 +33,11 @@
 //! //   REQUIRED INT32 b;
 //! // }
 //!
-//! let field_a = Type::primitive_type_builder("a", PhysicalType::BYTE_ARRAY)
-//!     .with_logical_type(LogicalType::UTF8)
-//!     .with_repetition(Repetition::OPTIONAL)
-//!     .build()
-//!     .unwrap();
+//! let field_a = Type::primitive_type_builder("a", PhysicalType::BYTE_ARRAY).with_logical_type(LogicalType::UTF8).with_repetition(Repetition::OPTIONAL).build().unwrap();
 //!
-//! let field_b = Type::primitive_type_builder("b", PhysicalType::INT32)
-//!     .with_repetition(Repetition::REQUIRED)
-//!     .build()
-//!     .unwrap();
+//! let field_b = Type::primitive_type_builder("b", PhysicalType::INT32).with_repetition(Repetition::REQUIRED).build().unwrap();
 //!
-//! let schema = Type::group_type_builder("schema")
-//!     .with_fields(&mut vec![Rc::new(field_a), Rc::new(field_b)])
-//!     .build()
-//!     .unwrap();
+//! let schema = Type::group_type_builder("schema").with_fields(&mut vec![Rc::new(field_a), Rc::new(field_b)]).build().unwrap();
 //!
 //! let mut buf = Vec::new();
 //!

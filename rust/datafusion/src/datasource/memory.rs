@@ -36,15 +36,10 @@ pub struct MemTable {
 impl MemTable {
     /// Create a new in-memory table from the provided schema and record batches
     pub fn new(schema: Arc<Schema>, batches: Vec<RecordBatch>) -> Result<Self> {
-        if batches
-            .iter()
-            .all(|batch| batch.schema().as_ref() == schema.as_ref())
-        {
+        if batches.iter().all(|batch| batch.schema().as_ref() == schema.as_ref()) {
             Ok(Self { schema, batches })
         } else {
-            Err(ExecutionError::General(
-                "Mismatch between schema and batches".to_string(),
-            ))
+            Err(ExecutionError::General("Mismatch between schema and batches".to_string()))
         }
     }
 
@@ -69,11 +64,7 @@ impl TableProvider for MemTable {
         &self.schema
     }
 
-    fn scan(
-        &self,
-        projection: &Option<Vec<usize>>,
-        _batch_size: usize,
-    ) -> Result<Vec<ScanResult>> {
+    fn scan(&self, projection: &Option<Vec<usize>>, _batch_size: usize) -> Result<Vec<ScanResult>> {
         let columns: Vec<usize> = match projection {
             Some(p) => p.clone(),
             None => {
@@ -92,32 +83,17 @@ impl TableProvider for MemTable {
                 if *i < self.schema.fields().len() {
                     Ok(self.schema.field(*i).clone())
                 } else {
-                    Err(ExecutionError::General(
-                        "Projection index out of range".to_string(),
-                    ))
+                    Err(ExecutionError::General("Projection index out of range".to_string()))
                 }
             })
             .collect();
 
         let projected_schema = Arc::new(Schema::new(projected_columns?));
 
-        let batches = self
-            .batches
-            .iter()
-            .map(|batch| {
-                RecordBatch::try_new(
-                    projected_schema.clone(),
-                    columns.iter().map(|i| batch.column(*i).clone()).collect(),
-                )
-            })
-            .collect();
+        let batches = self.batches.iter().map(|batch| RecordBatch::try_new(projected_schema.clone(), columns.iter().map(|i| batch.column(*i).clone()).collect())).collect();
 
         match batches {
-            Ok(batches) => Ok(vec![Arc::new(Mutex::new(MemBatchIterator {
-                schema: projected_schema.clone(),
-                index: 0,
-                batches,
-            }))]),
+            Ok(batches) => Ok(vec![Arc::new(Mutex::new(MemBatchIterator { schema: projected_schema.clone(), index: 0, batches }))]),
             Err(e) => Err(ExecutionError::ArrowError(e)),
         }
     }
@@ -153,21 +129,9 @@ mod tests {
 
     #[test]
     fn test_with_projection() {
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("a", DataType::Int32, false),
-            Field::new("b", DataType::Int32, false),
-            Field::new("c", DataType::Int32, false),
-        ]));
+        let schema = Arc::new(Schema::new(vec![Field::new("a", DataType::Int32, false), Field::new("b", DataType::Int32, false), Field::new("c", DataType::Int32, false)]));
 
-        let batch = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(Int32Array::from(vec![1, 2, 3])),
-                Arc::new(Int32Array::from(vec![4, 5, 6])),
-                Arc::new(Int32Array::from(vec![7, 8, 9])),
-            ],
-        )
-        .unwrap();
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(Int32Array::from(vec![1, 2, 3])), Arc::new(Int32Array::from(vec![4, 5, 6])), Arc::new(Int32Array::from(vec![7, 8, 9]))]).unwrap();
 
         let provider = MemTable::new(schema, vec![batch]).unwrap();
 
@@ -182,21 +146,9 @@ mod tests {
 
     #[test]
     fn test_without_projection() {
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("a", DataType::Int32, false),
-            Field::new("b", DataType::Int32, false),
-            Field::new("c", DataType::Int32, false),
-        ]));
+        let schema = Arc::new(Schema::new(vec![Field::new("a", DataType::Int32, false), Field::new("b", DataType::Int32, false), Field::new("c", DataType::Int32, false)]));
 
-        let batch = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(Int32Array::from(vec![1, 2, 3])),
-                Arc::new(Int32Array::from(vec![4, 5, 6])),
-                Arc::new(Int32Array::from(vec![7, 8, 9])),
-            ],
-        )
-        .unwrap();
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(Int32Array::from(vec![1, 2, 3])), Arc::new(Int32Array::from(vec![4, 5, 6])), Arc::new(Int32Array::from(vec![7, 8, 9]))]).unwrap();
 
         let provider = MemTable::new(schema, vec![batch]).unwrap();
 
@@ -208,67 +160,31 @@ mod tests {
 
     #[test]
     fn test_invalid_projection() {
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("a", DataType::Int32, false),
-            Field::new("b", DataType::Int32, false),
-            Field::new("c", DataType::Int32, false),
-        ]));
+        let schema = Arc::new(Schema::new(vec![Field::new("a", DataType::Int32, false), Field::new("b", DataType::Int32, false), Field::new("c", DataType::Int32, false)]));
 
-        let batch = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(Int32Array::from(vec![1, 2, 3])),
-                Arc::new(Int32Array::from(vec![4, 5, 6])),
-                Arc::new(Int32Array::from(vec![7, 8, 9])),
-            ],
-        )
-        .unwrap();
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(Int32Array::from(vec![1, 2, 3])), Arc::new(Int32Array::from(vec![4, 5, 6])), Arc::new(Int32Array::from(vec![7, 8, 9]))]).unwrap();
 
         let provider = MemTable::new(schema, vec![batch]).unwrap();
 
         let projection: Vec<usize> = vec![0, 4];
 
         match provider.scan(&Some(projection), 1024) {
-            Err(ExecutionError::General(e)) => {
-                assert_eq!("\"Projection index out of range\"", format!("{:?}", e))
-            }
+            Err(ExecutionError::General(e)) => assert_eq!("\"Projection index out of range\"", format!("{:?}", e)),
             _ => assert!(false, "Scan should failed on invalid projection"),
         };
     }
 
     #[test]
     fn test_schema_validation() {
-        let schema1 = Arc::new(Schema::new(vec![
-            Field::new("a", DataType::Int32, false),
-            Field::new("b", DataType::Int32, false),
-            Field::new("c", DataType::Int32, false),
-        ]));
+        let schema1 = Arc::new(Schema::new(vec![Field::new("a", DataType::Int32, false), Field::new("b", DataType::Int32, false), Field::new("c", DataType::Int32, false)]));
 
-        let schema2 = Arc::new(Schema::new(vec![
-            Field::new("a", DataType::Int32, false),
-            Field::new("b", DataType::Float64, false),
-            Field::new("c", DataType::Int32, false),
-        ]));
+        let schema2 = Arc::new(Schema::new(vec![Field::new("a", DataType::Int32, false), Field::new("b", DataType::Float64, false), Field::new("c", DataType::Int32, false)]));
 
-        let batch = RecordBatch::try_new(
-            schema1.clone(),
-            vec![
-                Arc::new(Int32Array::from(vec![1, 2, 3])),
-                Arc::new(Int32Array::from(vec![4, 5, 6])),
-                Arc::new(Int32Array::from(vec![7, 8, 9])),
-            ],
-        )
-        .unwrap();
+        let batch = RecordBatch::try_new(schema1.clone(), vec![Arc::new(Int32Array::from(vec![1, 2, 3])), Arc::new(Int32Array::from(vec![4, 5, 6])), Arc::new(Int32Array::from(vec![7, 8, 9]))]).unwrap();
 
         match MemTable::new(schema2, vec![batch]) {
-            Err(ExecutionError::General(e)) => assert_eq!(
-                "\"Mismatch between schema and batches\"",
-                format!("{:?}", e)
-            ),
-            _ => assert!(
-                false,
-                "MemTable::new should have failed due to schema mismatch"
-            ),
+            Err(ExecutionError::General(e)) => assert_eq!("\"Mismatch between schema and batches\"", format!("{:?}", e)),
+            _ => assert!(false, "MemTable::new should have failed due to schema mismatch"),
         }
     }
 }

@@ -45,18 +45,9 @@ impl ProjectionPushDown {
         Self {}
     }
 
-    fn optimize_plan(
-        &self,
-        plan: &LogicalPlan,
-        accum: &mut HashSet<usize>,
-        mapping: &mut HashMap<usize, usize>,
-    ) -> Result<Arc<LogicalPlan>> {
+    fn optimize_plan(&self, plan: &LogicalPlan, accum: &mut HashSet<usize>, mapping: &mut HashMap<usize, usize>) -> Result<Arc<LogicalPlan>> {
         match plan {
-            LogicalPlan::Projection {
-                expr,
-                input,
-                schema,
-            } => {
+            LogicalPlan::Projection { expr, input, schema } => {
                 // collect all columns referenced by projection expressions
                 utils::exprlist_to_column_indices(&expr, accum);
 
@@ -66,11 +57,7 @@ impl ProjectionPushDown {
                 // rewrite projection expressions to use new column indexes
                 let new_expr = self.rewrite_exprs(expr, mapping)?;
 
-                Ok(Arc::new(LogicalPlan::Projection {
-                    expr: new_expr,
-                    input,
-                    schema: schema.clone(),
-                }))
+                Ok(Arc::new(LogicalPlan::Projection { expr: new_expr, input, schema: schema.clone() }))
             }
             LogicalPlan::Selection { expr, input } => {
                 // collect all columns referenced by filter expression
@@ -82,17 +69,9 @@ impl ProjectionPushDown {
                 // rewrite filter expression to use new column indexes
                 let new_expr = self.rewrite_expr(expr, mapping)?;
 
-                Ok(Arc::new(LogicalPlan::Selection {
-                    expr: new_expr,
-                    input,
-                }))
+                Ok(Arc::new(LogicalPlan::Selection { expr: new_expr, input }))
             }
-            LogicalPlan::Aggregate {
-                input,
-                group_expr,
-                aggr_expr,
-                schema,
-            } => {
+            LogicalPlan::Aggregate { input, group_expr, aggr_expr, schema } => {
                 // collect all columns referenced by grouping and aggregate expressions
                 utils::exprlist_to_column_indices(&group_expr, accum);
                 utils::exprlist_to_column_indices(&aggr_expr, accum);
@@ -111,11 +90,7 @@ impl ProjectionPushDown {
                     schema: schema.clone(),
                 }))
             }
-            LogicalPlan::Sort {
-                expr,
-                input,
-                schema,
-            } => {
+            LogicalPlan::Sort { expr, input, schema } => {
                 // collect all columns referenced by sort expressions
                 utils::exprlist_to_column_indices(&expr, accum);
 
@@ -125,23 +100,10 @@ impl ProjectionPushDown {
                 // rewrite sort expressions to use new column indexes
                 let new_expr = self.rewrite_exprs(expr, mapping)?;
 
-                Ok(Arc::new(LogicalPlan::Sort {
-                    expr: new_expr,
-                    input,
-                    schema: schema.clone(),
-                }))
+                Ok(Arc::new(LogicalPlan::Sort { expr: new_expr, input, schema: schema.clone() }))
             }
-            LogicalPlan::EmptyRelation { schema } => {
-                Ok(Arc::new(LogicalPlan::EmptyRelation {
-                    schema: schema.clone(),
-                }))
-            }
-            LogicalPlan::TableScan {
-                schema_name,
-                table_name,
-                schema,
-                ..
-            } => {
+            LogicalPlan::EmptyRelation { schema } => Ok(Arc::new(LogicalPlan::EmptyRelation { schema: schema.clone() })),
+            LogicalPlan::TableScan { schema_name, table_name, schema, .. } => {
                 // once we reach the table scan, we can use the accumulated set of column indexes as
                 // the projection in the table scan
                 let mut projection: Vec<usize> = Vec::with_capacity(accum.len());
@@ -151,8 +113,7 @@ impl ProjectionPushDown {
                 projection.sort();
 
                 // create the projected schema
-                let mut projected_fields: Vec<Field> =
-                    Vec::with_capacity(projection.len());
+                let mut projected_fields: Vec<Field> = Vec::with_capacity(projection.len());
                 for i in 0..projection.len() {
                     projected_fields.push(schema.fields()[i].clone());
                 }
@@ -163,9 +124,7 @@ impl ProjectionPushDown {
                 // can rewrite expressions as we walk back up the tree
 
                 if mapping.len() != 0 {
-                    return Err(ExecutionError::InternalError(
-                        "illegal state".to_string(),
-                    ));
+                    return Err(ExecutionError::InternalError("illegal state".to_string()));
                 }
 
                 for i in 0..schema.fields().len() {
@@ -182,11 +141,7 @@ impl ProjectionPushDown {
                     projection: Some(projection),
                 }))
             }
-            LogicalPlan::Limit {
-                expr,
-                input,
-                schema,
-            } => Ok(Arc::new(LogicalPlan::Limit {
+            LogicalPlan::Limit { expr, input, schema } => Ok(Arc::new(LogicalPlan::Limit {
                 expr: expr.clone(),
                 input: input.clone(),
                 schema: schema.clone(),
@@ -194,15 +149,8 @@ impl ProjectionPushDown {
         }
     }
 
-    fn rewrite_exprs(
-        &self,
-        expr: &Vec<Expr>,
-        mapping: &HashMap<usize, usize>,
-    ) -> Result<Vec<Expr>> {
-        Ok(expr
-            .iter()
-            .map(|e| self.rewrite_expr(e, mapping))
-            .collect::<Result<Vec<Expr>>>()?)
+    fn rewrite_exprs(&self, expr: &Vec<Expr>, mapping: &HashMap<usize, usize>) -> Result<Vec<Expr>> {
+        Ok(expr.iter().map(|e| self.rewrite_expr(e, mapping)).collect::<Result<Vec<Expr>>>()?)
     }
 
     fn rewrite_expr(&self, expr: &Expr, mapping: &HashMap<usize, usize>) -> Result<Expr> {
@@ -210,9 +158,7 @@ impl ProjectionPushDown {
             Expr::Column(i) => Ok(Expr::Column(self.new_index(mapping, i)?)),
             Expr::Literal(_) => Ok(expr.clone()),
             Expr::IsNull(e) => Ok(Expr::IsNull(Arc::new(self.rewrite_expr(e, mapping)?))),
-            Expr::IsNotNull(e) => {
-                Ok(Expr::IsNotNull(Arc::new(self.rewrite_expr(e, mapping)?)))
-            }
+            Expr::IsNotNull(e) => Ok(Expr::IsNotNull(Arc::new(self.rewrite_expr(e, mapping)?))),
             Expr::BinaryExpr { left, op, right } => Ok(Expr::BinaryExpr {
                 left: Arc::new(self.rewrite_expr(left, mapping)?),
                 op: op.clone(),
@@ -226,20 +172,12 @@ impl ProjectionPushDown {
                 expr: Arc::new(self.rewrite_expr(expr, mapping)?),
                 asc: *asc,
             }),
-            Expr::AggregateFunction {
-                name,
-                args,
-                return_type,
-            } => Ok(Expr::AggregateFunction {
+            Expr::AggregateFunction { name, args, return_type } => Ok(Expr::AggregateFunction {
                 name: name.to_string(),
                 args: self.rewrite_exprs(args, mapping)?,
                 return_type: return_type.clone(),
             }),
-            Expr::ScalarFunction {
-                name,
-                args,
-                return_type,
-            } => Ok(Expr::ScalarFunction {
+            Expr::ScalarFunction { name, args, return_type } => Ok(Expr::ScalarFunction {
                 name: name.to_string(),
                 args: self.rewrite_exprs(args, mapping)?,
                 return_type: return_type.clone(),
@@ -250,9 +188,7 @@ impl ProjectionPushDown {
     fn new_index(&self, mapping: &HashMap<usize, usize>, i: &usize) -> Result<usize> {
         match mapping.get(i) {
             Some(j) => Ok(*j),
-            _ => Err(ExecutionError::InternalError(
-                "Internal error computing new column index".to_string(),
-            )),
+            _ => Err(ExecutionError::InternalError("Internal error computing new column index".to_string())),
         }
     }
 }
@@ -274,11 +210,7 @@ mod tests {
         let aggregate = Aggregate {
             group_expr: vec![],
             aggr_expr: vec![Column(1)],
-            schema: Arc::new(Schema::new(vec![Field::new(
-                "MAX(b)",
-                DataType::UInt32,
-                false,
-            )])),
+            schema: Arc::new(Schema::new(vec![Field::new("MAX(b)", DataType::UInt32, false)])),
             input: Arc::new(table_scan),
         };
 
@@ -292,10 +224,7 @@ mod tests {
         let aggregate = Aggregate {
             group_expr: vec![Column(2)],
             aggr_expr: vec![Column(1)],
-            schema: Arc::new(Schema::new(vec![
-                Field::new("c", DataType::UInt32, false),
-                Field::new("MAX(b)", DataType::UInt32, false),
-            ])),
+            schema: Arc::new(Schema::new(vec![Field::new("c", DataType::UInt32, false), Field::new("MAX(b)", DataType::UInt32, false)])),
             input: Arc::new(table_scan),
         };
 
@@ -306,19 +235,12 @@ mod tests {
     fn aggregate_no_group_by_with_selection() {
         let table_scan = test_table_scan();
 
-        let selection = Selection {
-            expr: Column(2),
-            input: Arc::new(table_scan),
-        };
+        let selection = Selection { expr: Column(2), input: Arc::new(table_scan) };
 
         let aggregate = Aggregate {
             group_expr: vec![],
             aggr_expr: vec![Column(1)],
-            schema: Arc::new(Schema::new(vec![Field::new(
-                "MAX(b)",
-                DataType::UInt32,
-                false,
-            )])),
+            schema: Arc::new(Schema::new(vec![Field::new("MAX(b)", DataType::UInt32, false)])),
             input: Arc::new(selection),
         };
 
@@ -335,17 +257,10 @@ mod tests {
                 data_type: DataType::Float64,
             }],
             input: Arc::new(table_scan),
-            schema: Arc::new(Schema::new(vec![Field::new(
-                "CAST(c AS float)",
-                DataType::Float64,
-                false,
-            )])),
+            schema: Arc::new(Schema::new(vec![Field::new("CAST(c AS float)", DataType::Float64, false)])),
         };
 
-        assert_optimized_plan_eq(
-            &projection,
-            "Projection: CAST(#0 AS Float64)\n  TableScan: test projection=Some([2])",
-        );
+        assert_optimized_plan_eq(&projection, "Projection: CAST(#0 AS Float64)\n  TableScan: test projection=Some([2])");
     }
 
     #[test]
@@ -356,10 +271,7 @@ mod tests {
         let projection = Projection {
             expr: vec![Column(0), Column(1)],
             input: Arc::new(table_scan),
-            schema: Arc::new(Schema::new(vec![
-                Field::new("a", DataType::UInt32, false),
-                Field::new("b", DataType::UInt32, false),
-            ])),
+            schema: Arc::new(Schema::new(vec![Field::new("a", DataType::UInt32, false), Field::new("b", DataType::UInt32, false)])),
         };
 
         let optimized_plan = optimize(&projection);
@@ -392,11 +304,7 @@ mod tests {
         TableScan {
             schema_name: "default".to_string(),
             table_name: "test".to_string(),
-            schema: Arc::new(Schema::new(vec![
-                Field::new("a", DataType::UInt32, false),
-                Field::new("b", DataType::UInt32, false),
-                Field::new("c", DataType::UInt32, false),
-            ])),
+            schema: Arc::new(Schema::new(vec![Field::new("a", DataType::UInt32, false), Field::new("b", DataType::UInt32, false), Field::new("c", DataType::UInt32, false)])),
             projection: None,
         }
     }

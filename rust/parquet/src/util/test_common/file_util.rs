@@ -25,8 +25,7 @@ pub fn get_test_path(file_name: &str) -> PathBuf {
             let mut pathbuf = env::current_dir().unwrap();
             pathbuf.pop();
             pathbuf.pop();
-            pathbuf
-                .push(PathBuf::from_str("cpp/submodules/parquet-testing/data").unwrap());
+            pathbuf.push(PathBuf::from_str("cpp/submodules/parquet-testing/data").unwrap());
             pathbuf
         }
     };
@@ -59,10 +58,7 @@ pub fn get_temp_file(file_name: &str, content: &[u8]) -> fs::File {
     tmp_file.sync_all().unwrap();
 
     // return file handle for both read and write
-    let file = fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path_buf.as_path());
+    let file = fs::OpenOptions::new().read(true).write(true).open(path_buf.as_path());
     assert!(file.is_ok());
     file.unwrap()
 }

@@ -30,11 +30,7 @@
 //! use std::io::BufReader;
 //! use std::sync::Arc;
 //!
-//! let schema = Schema::new(vec![
-//!     Field::new("a", DataType::Float64, false),
-//!     Field::new("b", DataType::Float64, false),
-//!     Field::new("c", DataType::Float64, false),
-//! ]);
+//! let schema = Schema::new(vec![Field::new("a", DataType::Float64, false), Field::new("b", DataType::Float64, false), Field::new("c", DataType::Float64, false)]);
 //!
 //! let file = File::open("test/data/basic.json").unwrap();
 //!
@@ -66,11 +62,7 @@ fn coerce_data_type(dt: Vec<&DataType>) -> Result<DataType> {
         1 => Ok(dt[0].clone()),
         2 => {
             // there can be a case where a list and scalar both exist
-            if dt.contains(&&DataType::List(Box::new(DataType::Float64)))
-                || dt.contains(&&DataType::List(Box::new(DataType::Int64)))
-                || dt.contains(&&DataType::List(Box::new(DataType::Boolean)))
-                || dt.contains(&&DataType::List(Box::new(DataType::Utf8)))
-            {
+            if dt.contains(&&DataType::List(Box::new(DataType::Float64))) || dt.contains(&&DataType::List(Box::new(DataType::Int64))) || dt.contains(&&DataType::List(Box::new(DataType::Boolean))) || dt.contains(&&DataType::List(Box::new(DataType::Utf8))) {
                 // we have a list and scalars, so we should get the values and coerce them
                 let mut dt = dt;
                 // sorting guarantees that the list will be the second value
@@ -80,30 +72,21 @@ fn coerce_data_type(dt: Vec<&DataType>) -> Result<DataType> {
                         if t1 == &DataType::Float64 {
                             Ok(DataType::List(Box::new(DataType::Float64)))
                         } else {
-                            Ok(DataType::List(Box::new(coerce_data_type(vec![
-                                t1,
-                                &DataType::Float64,
-                            ])?)))
+                            Ok(DataType::List(Box::new(coerce_data_type(vec![t1, &DataType::Float64])?)))
                         }
                     }
                     (t1, DataType::List(e)) if **e == DataType::Int64 => {
                         if t1 == &DataType::Int64 {
                             Ok(DataType::List(Box::new(DataType::Int64)))
                         } else {
-                            Ok(DataType::List(Box::new(coerce_data_type(vec![
-                                t1,
-                                &DataType::Int64,
-                            ])?)))
+                            Ok(DataType::List(Box::new(coerce_data_type(vec![t1, &DataType::Int64])?)))
                         }
                     }
                     (t1, DataType::List(e)) if **e == DataType::Boolean => {
                         if t1 == &DataType::Boolean {
                             Ok(DataType::List(Box::new(DataType::Boolean)))
                         } else {
-                            Ok(DataType::List(Box::new(coerce_data_type(vec![
-                                t1,
-                                &DataType::Boolean,
-                            ])?)))
+                            Ok(DataType::List(Box::new(coerce_data_type(vec![t1, &DataType::Boolean])?)))
                         }
                     }
                     (t1, DataType::List(e)) if **e == DataType::Utf8 => {
@@ -111,16 +94,10 @@ fn coerce_data_type(dt: Vec<&DataType>) -> Result<DataType> {
                             Ok(DataType::List(Box::new(DataType::Utf8)))
                         } else {
                             dbg!(&t1);
-                            Ok(DataType::List(Box::new(coerce_data_type(vec![
-                                t1,
-                                &DataType::Utf8,
-                            ])?)))
+                            Ok(DataType::List(Box::new(coerce_data_type(vec![t1, &DataType::Utf8])?)))
                         }
                     }
-                    (t1 @ _, t2 @ _) => Err(ArrowError::JsonError(format!(
-                        "Cannot coerce data types for {:?} and {:?}",
-                        t1, t2
-                    ))),
+                    (t1 @ _, t2 @ _) => Err(ArrowError::JsonError(format!("Cannot coerce data types for {:?} and {:?}", t1, t2))),
                 }
             } else if dt.contains(&&DataType::Float64) && dt.contains(&&DataType::Int64) {
                 Ok(DataType::Float64)
@@ -196,20 +173,14 @@ fn infer_json_schema(file: File, max_read_records: Option<usize>) -> Result<Arc<
                                         }
                                         Value::Bool(_) => Ok(Some(&DataType::Boolean)),
                                         Value::String(_) => Ok(Some(&DataType::Utf8)),
-                                        Value::Array(_) | Value::Object(_) => {
-                                            Err(ArrowError::JsonError(
-                                                "Nested lists and structs not supported"
-                                                    .to_string(),
-                                            ))
-                                        }
+                                        Value::Array(_) | Value::Object(_) => Err(ArrowError::JsonError("Nested lists and structs not supported".to_string())),
                                     })
                                     .collect();
                                 match types {
                                     Ok(types) => {
                                         // unwrap the Option and discard None values (from
                                         // JSON nulls)
-                                        let mut types: Vec<&DataType> =
-                                            types.into_iter().filter_map(|t| t).collect();
+                                        let mut types: Vec<&DataType> = types.into_iter().filter_map(|t| t).collect();
                                         types.dedup();
                                         // if a record contains only nulls, it is not
                                         // added to values
@@ -285,10 +256,7 @@ fn infer_json_schema(file: File, max_read_records: Option<usize>) -> Result<Arc<
                                 }
                                 Ok(())
                             }
-                            Value::Object(_) => Err(ArrowError::JsonError(
-                                "Reading nested JSON structes currently not supported"
-                                    .to_string(),
-                            )),
+                            Value::Object(_) => Err(ArrowError::JsonError("Reading nested JSON structes currently not supported".to_string())),
                         }
                     })
                     .collect();
@@ -298,10 +266,7 @@ fn infer_json_schema(file: File, max_read_records: Option<usize>) -> Result<Arc<
                 }
             }
             t @ _ => {
-                return Err(ArrowError::JsonError(format!(
-                    "Expected JSON record to be an object, found {:?}",
-                    t
-                )));
+                return Err(ArrowError::JsonError(format!("Expected JSON record to be an object, found {:?}", t)));
             }
         };
     }
@@ -331,18 +296,8 @@ impl<R: Read> Reader<R> {
     ///
     /// If reading a `File`, you can customise the Reader, such as to enable schema
     /// inference, use `ReaderBuilder`.
-    pub fn new(
-        reader: BufReader<R>,
-        schema: Arc<Schema>,
-        batch_size: usize,
-        projection: Option<Vec<String>>,
-    ) -> Self {
-        Self {
-            schema,
-            projection,
-            reader,
-            batch_size,
-        }
+    pub fn new(reader: BufReader<R>, schema: Arc<Schema>, batch_size: usize, projection: Option<Vec<String>>) -> Self {
+        Self { schema, projection, reader, batch_size }
     }
 
     /// Read the next batch of records
@@ -375,25 +330,15 @@ impl<R: Read> Reader<R> {
             .map(|field| {
                 match field.data_type().clone() {
                     DataType::Boolean => self.build_boolean_array(rows, field.name()),
-                    DataType::Float64 => {
-                        self.build_primitive_array::<Float64Type>(rows, field.name())
-                    }
-                    DataType::Float32 => {
-                        self.build_primitive_array::<Float32Type>(rows, field.name())
-                    }
+                    DataType::Float64 => self.build_primitive_array::<Float64Type>(rows, field.name()),
+                    DataType::Float32 => self.build_primitive_array::<Float32Type>(rows, field.name()),
                     DataType::Int64 => self.build_primitive_array::<Int64Type>(rows, field.name()),
                     DataType::Int32 => self.build_primitive_array::<Int32Type>(rows, field.name()),
                     DataType::Int16 => self.build_primitive_array::<Int16Type>(rows, field.name()),
                     DataType::Int8 => self.build_primitive_array::<Int8Type>(rows, field.name()),
-                    DataType::UInt64 => {
-                        self.build_primitive_array::<UInt64Type>(rows, field.name())
-                    }
-                    DataType::UInt32 => {
-                        self.build_primitive_array::<UInt32Type>(rows, field.name())
-                    }
-                    DataType::UInt16 => {
-                        self.build_primitive_array::<UInt16Type>(rows, field.name())
-                    }
+                    DataType::UInt64 => self.build_primitive_array::<UInt64Type>(rows, field.name()),
+                    DataType::UInt32 => self.build_primitive_array::<UInt32Type>(rows, field.name()),
+                    DataType::UInt16 => self.build_primitive_array::<UInt16Type>(rows, field.name()),
                     DataType::UInt8 => self.build_primitive_array::<UInt8Type>(rows, field.name()),
                     DataType::Utf8 => {
                         let mut builder = BinaryBuilder::new(rows.len());
@@ -433,24 +378,26 @@ impl<R: Read> Reader<R> {
                                         let vals: Vec<Option<String>> = if let Value::String(v) = value {
                                             vec![Some(v.to_string())]
                                         } else if let Value::Array(n) = value {
-                                            n.iter().map(|v: &Value| {
-                                                if v.is_string() {
-                                                    Some(v.as_str().unwrap().to_string())
-                                                } else if v.is_array() || v.is_object() {
-                                                    // implicitly drop nested values
-                                                    // TODO support deep-nesting
-                                                    None
-                                                } else {
-                                                    Some(v.to_string())
-                                                }
-                                            }).collect()
+                                            n.iter()
+                                                .map(|v: &Value| {
+                                                    if v.is_string() {
+                                                        Some(v.as_str().unwrap().to_string())
+                                                    } else if v.is_array() || v.is_object() {
+                                                        // implicitly drop nested values
+                                                        // TODO support deep-nesting
+                                                        None
+                                                    } else {
+                                                        Some(v.to_string())
+                                                    }
+                                                })
+                                                .collect()
                                         } else if let Value::Null = value {
                                             vec![None]
                                         } else {
                                             if !value.is_object() {
                                                 vec![Some(value.to_string())]
                                             } else {
-                                                return Err(ArrowError::JsonError("1Only scalars are currently supported in JSON arrays".to_string()))
+                                                return Err(ArrowError::JsonError("1Only scalars are currently supported in JSON arrays".to_string()));
                                             }
                                         };
                                         for i in 0..vals.len() {
@@ -476,12 +423,7 @@ impl<R: Read> Reader<R> {
         let projected_fields: Vec<Field> = if projection.is_empty() {
             self.schema.fields().to_vec()
         } else {
-            projection
-                .iter()
-                .map(|name| self.schema.column_with_name(name))
-                .filter_map(|c| c)
-                .map(|(_, field)| field.clone())
-                .collect()
+            projection.iter().map(|name| self.schema.column_with_name(name)).filter_map(|c| c).map(|(_, field)| field.clone()).collect()
         };
 
         let projected_schema = Arc::new(Schema::new(projected_fields));
@@ -511,11 +453,7 @@ impl<R: Read> Reader<R> {
         Ok(Arc::new(builder.finish()))
     }
 
-    fn build_boolean_list_array(
-        &self,
-        rows: &[Value],
-        col_name: &str,
-    ) -> Result<ArrayRef> {
+    fn build_boolean_list_array(&self, rows: &[Value], col_name: &str) -> Result<ArrayRef> {
         let values_builder = BooleanBuilder::new(rows.len() * 5);
         let mut builder = ListBuilder::new(values_builder);
         for row_index in 0..rows.len() {
@@ -529,10 +467,7 @@ impl<R: Read> Reader<R> {
                     } else if let Value::Null = value {
                         vec![None]
                     } else {
-                        return Err(ArrowError::JsonError(
-                            "2Only scalars are currently supported in JSON arrays"
-                                .to_string(),
-                        ));
+                        return Err(ArrowError::JsonError("2Only scalars are currently supported in JSON arrays".to_string()));
                     };
                     for i in 0..vals.len() {
                         match vals[i] {
@@ -548,11 +483,7 @@ impl<R: Read> Reader<R> {
         Ok(Arc::new(builder.finish()))
     }
 
-    fn build_primitive_array<T: ArrowPrimitiveType>(
-        &self,
-        rows: &[Value],
-        col_name: &str,
-    ) -> Result<ArrayRef>
+    fn build_primitive_array<T: ArrowPrimitiveType>(&self, rows: &[Value], col_name: &str) -> Result<ArrayRef>
     where
         T: ArrowNumericType,
         T::Native: num::NumCast,
@@ -578,11 +509,7 @@ impl<R: Read> Reader<R> {
         Ok(Arc::new(builder.finish()))
     }
 
-    fn build_list_array<T: ArrowPrimitiveType>(
-        &self,
-        rows: &[Value],
-        col_name: &str,
-    ) -> Result<ArrayRef>
+    fn build_list_array<T: ArrowPrimitiveType>(&self, rows: &[Value], col_name: &str) -> Result<ArrayRef>
     where
         T::Native: num::NumCast,
     {
@@ -599,10 +526,7 @@ impl<R: Read> Reader<R> {
                     } else if let Value::Null = value {
                         vec![None]
                     } else {
-                        return Err(ArrowError::JsonError(
-                            "3Only scalars are currently supported in JSON arrays"
-                                .to_string(),
-                        ));
+                        return Err(ArrowError::JsonError("3Only scalars are currently supported in JSON arrays".to_string()));
                     };
                     for i in 0..vals.len() {
                         match vals[i] {
@@ -718,12 +642,7 @@ impl ReaderBuilder {
             }
         };
         let buf_reader = BufReader::new(file);
-        Ok(Reader::new(
-            buf_reader,
-            schema,
-            self.batch_size,
-            self.projection,
-        ))
+        Ok(Reader::new(buf_reader, schema, self.batch_size, self.projection))
     }
 }
 
@@ -734,9 +653,7 @@ mod tests {
     #[test]
     fn test_json_basic() {
         let builder = ReaderBuilder::new().infer_schema(None).with_batch_size(64);
-        let mut reader: Reader<File> = builder
-            .build::<File>(File::open("test/data/basic.json").unwrap())
-            .unwrap();
+        let mut reader: Reader<File> = builder.build::<File>(File::open("test/data/basic.json").unwrap()).unwrap();
         let batch = reader.next().unwrap().unwrap();
 
         assert_eq!(4, batch.num_columns());
@@ -757,32 +674,16 @@ mod tests {
         assert_eq!(3, d.0);
         assert_eq!(&DataType::Utf8, d.1.data_type());
 
-        let aa = batch
-            .column(a.0)
-            .as_any()
-            .downcast_ref::<Int64Array>()
-            .unwrap();
+        let aa = batch.column(a.0).as_any().downcast_ref::<Int64Array>().unwrap();
         assert_eq!(1, aa.value(0));
         assert_eq!(-10, aa.value(1));
-        let bb = batch
-            .column(b.0)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .unwrap();
+        let bb = batch.column(b.0).as_any().downcast_ref::<Float64Array>().unwrap();
         assert_eq!(2.0, bb.value(0));
         assert_eq!(-3.5, bb.value(1));
-        let cc = batch
-            .column(c.0)
-            .as_any()
-            .downcast_ref::<BooleanArray>()
-            .unwrap();
+        let cc = batch.column(c.0).as_any().downcast_ref::<BooleanArray>().unwrap();
         assert_eq!(false, cc.value(0));
         assert_eq!(true, cc.value(10));
-        let dd = batch
-            .column(d.0)
-            .as_any()
-            .downcast_ref::<BinaryArray>()
-            .unwrap();
+        let dd = batch.column(d.0).as_any().downcast_ref::<BinaryArray>().unwrap();
         assert_eq!("4", String::from_utf8(dd.value(0).to_vec()).unwrap());
         assert_eq!("text", String::from_utf8(dd.value(8).to_vec()).unwrap());
     }
@@ -790,9 +691,7 @@ mod tests {
     #[test]
     fn test_json_basic_with_nulls() {
         let builder = ReaderBuilder::new().infer_schema(None).with_batch_size(64);
-        let mut reader: Reader<File> = builder
-            .build::<File>(File::open("test/data/basic_nulls.json").unwrap())
-            .unwrap();
+        let mut reader: Reader<File> = builder.build::<File>(File::open("test/data/basic_nulls.json").unwrap()).unwrap();
         let batch = reader.next().unwrap().unwrap();
 
         assert_eq!(4, batch.num_columns());
@@ -809,35 +708,19 @@ mod tests {
         let d = schema.column_with_name("d").unwrap();
         assert_eq!(&DataType::Utf8, d.1.data_type());
 
-        let aa = batch
-            .column(a.0)
-            .as_any()
-            .downcast_ref::<Int64Array>()
-            .unwrap();
+        let aa = batch.column(a.0).as_any().downcast_ref::<Int64Array>().unwrap();
         assert_eq!(true, aa.is_valid(0));
         assert_eq!(false, aa.is_valid(1));
         assert_eq!(false, aa.is_valid(11));
-        let bb = batch
-            .column(b.0)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .unwrap();
+        let bb = batch.column(b.0).as_any().downcast_ref::<Float64Array>().unwrap();
         assert_eq!(true, bb.is_valid(0));
         assert_eq!(false, bb.is_valid(2));
         assert_eq!(false, bb.is_valid(11));
-        let cc = batch
-            .column(c.0)
-            .as_any()
-            .downcast_ref::<BooleanArray>()
-            .unwrap();
+        let cc = batch.column(c.0).as_any().downcast_ref::<BooleanArray>().unwrap();
         assert_eq!(true, cc.is_valid(0));
         assert_eq!(false, cc.is_valid(4));
         assert_eq!(false, cc.is_valid(11));
-        let dd = batch
-            .column(d.0)
-            .as_any()
-            .downcast_ref::<BinaryArray>()
-            .unwrap();
+        let dd = batch.column(d.0).as_any().downcast_ref::<BinaryArray>().unwrap();
         assert_eq!(false, dd.is_valid(0));
         assert_eq!(true, dd.is_valid(1));
         assert_eq!(false, dd.is_valid(4));
@@ -846,19 +729,9 @@ mod tests {
 
     #[test]
     fn test_json_basic_schema() {
-        let schema = Schema::new(vec![
-            Field::new("a", DataType::Int32, false),
-            Field::new("b", DataType::Float32, false),
-            Field::new("c", DataType::Boolean, false),
-            Field::new("d", DataType::Utf8, false),
-        ]);
+        let schema = Schema::new(vec![Field::new("a", DataType::Int32, false), Field::new("b", DataType::Float32, false), Field::new("c", DataType::Boolean, false), Field::new("d", DataType::Utf8, false)]);
 
-        let mut reader: Reader<File> = Reader::new(
-            BufReader::new(File::open("test/data/basic.json").unwrap()),
-            Arc::new(schema),
-            1024,
-            None,
-        );
+        let mut reader: Reader<File> = Reader::new(BufReader::new(File::open("test/data/basic.json").unwrap()), Arc::new(schema), 1024, None);
         let batch = reader.next().unwrap().unwrap();
 
         assert_eq!(4, batch.num_columns());
@@ -875,19 +748,11 @@ mod tests {
         let d = schema.column_with_name("d").unwrap();
         assert_eq!(&DataType::Utf8, d.1.data_type());
 
-        let aa = batch
-            .column(a.0)
-            .as_any()
-            .downcast_ref::<Int32Array>()
-            .unwrap();
+        let aa = batch.column(a.0).as_any().downcast_ref::<Int32Array>().unwrap();
         assert_eq!(1, aa.value(0));
         // test that a 64bit value is returned as null due to overflowing
         assert_eq!(false, aa.is_valid(11));
-        let bb = batch
-            .column(b.0)
-            .as_any()
-            .downcast_ref::<Float32Array>()
-            .unwrap();
+        let bb = batch.column(b.0).as_any().downcast_ref::<Float32Array>().unwrap();
         assert_eq!(2.0, bb.value(0));
         assert_eq!(-3.5, bb.value(1));
     }
@@ -897,18 +762,9 @@ mod tests {
         // We test implicit and explicit projection:
         // Implicit: omitting fields from a schema
         // Explicit: supplying a vec of fields to take
-        let schema = Schema::new(vec![
-            Field::new("a", DataType::Int32, false),
-            Field::new("b", DataType::Float32, false),
-            Field::new("c", DataType::Boolean, false),
-        ]);
+        let schema = Schema::new(vec![Field::new("a", DataType::Int32, false), Field::new("b", DataType::Float32, false), Field::new("c", DataType::Boolean, false)]);
 
-        let mut reader: Reader<File> = Reader::new(
-            BufReader::new(File::open("test/data/basic.json").unwrap()),
-            Arc::new(schema),
-            1024,
-            Some(vec!["a".to_string(), "c".to_string()]),
-        );
+        let mut reader: Reader<File> = Reader::new(BufReader::new(File::open("test/data/basic.json").unwrap()), Arc::new(schema), 1024, Some(vec!["a".to_string(), "c".to_string()]));
         let batch = reader.next().unwrap().unwrap();
 
         assert_eq!(2, batch.num_columns());
@@ -928,9 +784,7 @@ mod tests {
     #[test]
     fn test_json_arrays() {
         let builder = ReaderBuilder::new().infer_schema(None).with_batch_size(64);
-        let mut reader: Reader<File> = builder
-            .build::<File>(File::open("test/data/arrays.json").unwrap())
-            .unwrap();
+        let mut reader: Reader<File> = builder.build::<File>(File::open("test/data/arrays.json").unwrap()).unwrap();
         let batch = reader.next().unwrap().unwrap();
 
         assert_eq!(4, batch.num_columns());
@@ -941,30 +795,16 @@ mod tests {
         let a = schema.column_with_name("a").unwrap();
         assert_eq!(&DataType::Int64, a.1.data_type());
         let b = schema.column_with_name("b").unwrap();
-        assert_eq!(
-            &DataType::List(Box::new(DataType::Float64)),
-            b.1.data_type()
-        );
+        assert_eq!(&DataType::List(Box::new(DataType::Float64)), b.1.data_type());
         let c = schema.column_with_name("c").unwrap();
-        assert_eq!(
-            &DataType::List(Box::new(DataType::Boolean)),
-            c.1.data_type()
-        );
+        assert_eq!(&DataType::List(Box::new(DataType::Boolean)), c.1.data_type());
         let d = schema.column_with_name("d").unwrap();
         assert_eq!(&DataType::Utf8, d.1.data_type());
 
-        let aa = batch
-            .column(a.0)
-            .as_any()
-            .downcast_ref::<Int64Array>()
-            .unwrap();
+        let aa = batch.column(a.0).as_any().downcast_ref::<Int64Array>().unwrap();
         assert_eq!(1, aa.value(0));
         assert_eq!(-10, aa.value(1));
-        let bb = batch
-            .column(b.0)
-            .as_any()
-            .downcast_ref::<ListArray>()
-            .unwrap();
+        let bb = batch.column(b.0).as_any().downcast_ref::<ListArray>().unwrap();
         let bb = bb.values();
         let bb = bb.as_any().downcast_ref::<Float64Array>().unwrap();
         assert_eq!(9, bb.len());
@@ -972,11 +812,7 @@ mod tests {
         assert_eq!(-6.1, bb.value(5));
         assert_eq!(false, bb.is_valid(7));
 
-        let cc = batch
-            .column(c.0)
-            .as_any()
-            .downcast_ref::<ListArray>()
-            .unwrap();
+        let cc = batch.column(c.0).as_any().downcast_ref::<ListArray>().unwrap();
         let cc = cc.values();
         let cc = cc.as_any().downcast_ref::<BooleanArray>().unwrap();
         assert_eq!(6, cc.len());
@@ -989,9 +825,7 @@ mod tests {
     #[should_panic(expected = "Not valid JSON")]
     fn test_invalid_file() {
         let builder = ReaderBuilder::new().infer_schema(None).with_batch_size(64);
-        let mut reader: Reader<File> = builder
-            .build::<File>(File::open("test/data/uk_cities_with_headers.csv").unwrap())
-            .unwrap();
+        let mut reader: Reader<File> = builder.build::<File>(File::open("test/data/uk_cities_with_headers.csv").unwrap()).unwrap();
         let _batch = reader.next().unwrap().unwrap();
     }
 
@@ -999,31 +833,17 @@ mod tests {
     fn test_coersion_scalar_and_list() {
         use crate::datatypes::DataType::*;
 
-        assert_eq!(
-            List(Box::new(Float64)),
-            coerce_data_type(vec![&Float64, &List(Box::new(Float64))]).unwrap()
-        );
-        assert_eq!(
-            List(Box::new(Float64)),
-            coerce_data_type(vec![&Float64, &List(Box::new(Int64))]).unwrap()
-        );
-        assert_eq!(
-            List(Box::new(Int64)),
-            coerce_data_type(vec![&Int64, &List(Box::new(Int64))]).unwrap()
-        );
+        assert_eq!(List(Box::new(Float64)), coerce_data_type(vec![&Float64, &List(Box::new(Float64))]).unwrap());
+        assert_eq!(List(Box::new(Float64)), coerce_data_type(vec![&Float64, &List(Box::new(Int64))]).unwrap());
+        assert_eq!(List(Box::new(Int64)), coerce_data_type(vec![&Int64, &List(Box::new(Int64))]).unwrap());
         // boolean an number are incompatible, return utf8
-        assert_eq!(
-            List(Box::new(Utf8)),
-            coerce_data_type(vec![&Boolean, &List(Box::new(Float64))]).unwrap()
-        );
+        assert_eq!(List(Box::new(Utf8)), coerce_data_type(vec![&Boolean, &List(Box::new(Float64))]).unwrap());
     }
 
     #[test]
     fn test_mixed_json_arrays() {
         let builder = ReaderBuilder::new().infer_schema(None).with_batch_size(64);
-        let mut reader: Reader<File> = builder
-            .build::<File>(File::open("test/data/mixed_arrays.json").unwrap())
-            .unwrap();
+        let mut reader: Reader<File> = builder.build::<File>(File::open("test/data/mixed_arrays.json").unwrap()).unwrap();
         let batch = reader.next().unwrap().unwrap();
 
         assert_eq!(4, batch.num_columns());
@@ -1034,33 +854,19 @@ mod tests {
         let a = schema.column_with_name("a").unwrap();
         assert_eq!(&DataType::Int64, a.1.data_type());
         let b = schema.column_with_name("b").unwrap();
-        assert_eq!(
-            &DataType::List(Box::new(DataType::Float64)),
-            b.1.data_type()
-        );
+        assert_eq!(&DataType::List(Box::new(DataType::Float64)), b.1.data_type());
         let c = schema.column_with_name("c").unwrap();
-        assert_eq!(
-            &DataType::List(Box::new(DataType::Boolean)),
-            c.1.data_type()
-        );
+        assert_eq!(&DataType::List(Box::new(DataType::Boolean)), c.1.data_type());
         let d = schema.column_with_name("d").unwrap();
         assert_eq!(&DataType::List(Box::new(DataType::Utf8)), d.1.data_type());
 
-        let bb = batch
-            .column(b.0)
-            .as_any()
-            .downcast_ref::<ListArray>()
-            .unwrap();
+        let bb = batch.column(b.0).as_any().downcast_ref::<ListArray>().unwrap();
         let bb = bb.values();
         let bb = bb.as_any().downcast_ref::<Float64Array>().unwrap();
         assert_eq!(10, bb.len());
         assert_eq!(4.0, bb.value(9));
 
-        let cc = batch
-            .column(c.0)
-            .as_any()
-            .downcast_ref::<ListArray>()
-            .unwrap();
+        let cc = batch.column(c.0).as_any().downcast_ref::<ListArray>().unwrap();
         let cc = cc.values();
         let cc = cc.as_any().downcast_ref::<BooleanArray>().unwrap();
         assert_eq!(6, cc.len());
@@ -1069,11 +875,7 @@ mod tests {
         assert_eq!(false, cc.is_valid(2));
         assert_eq!(false, cc.is_valid(4));
 
-        let dd = batch
-            .column(d.0)
-            .as_any()
-            .downcast_ref::<ListArray>()
-            .unwrap();
+        let dd = batch.column(d.0).as_any().downcast_ref::<ListArray>().unwrap();
         let dd = dd.values();
         let dd = dd.as_any().downcast_ref::<BinaryArray>().unwrap();
         assert_eq!(7, dd.len());

@@ -52,9 +52,7 @@ use crate::schema::types::{Type, TypePtr};
 /// for example, could be used to extract individual columns. Returns Parquet general
 /// error when parsing or validation fails.
 pub fn parse_message_type<'a>(message_type: &'a str) -> Result<Type> {
-    let mut parser = Parser {
-        tokenizer: &mut Tokenizer::from_str(message_type),
-    };
+    let mut parser = Parser { tokenizer: &mut Tokenizer::from_str(message_type) };
     parser.parse_message_type()
 }
 
@@ -72,14 +70,8 @@ struct Tokenizer<'a> {
 impl<'a> Tokenizer<'a> {
     // Create tokenizer from message type string
     pub fn from_str(string: &'a str) -> Self {
-        let vec = string
-            .split_whitespace()
-            .flat_map(|t| Self::split_token(t))
-            .collect();
-        Tokenizer {
-            tokens: vec,
-            index: 0,
-        }
+        let vec = string.split_whitespace().flat_map(|t| Self::split_token(t)).collect();
+        Tokenizer { tokens: vec, index: 0 }
     }
 
     // List of all special characters in schema
@@ -137,27 +129,14 @@ struct Parser<'a> {
 fn assert_token(token: Option<&str>, expected: &str) -> Result<()> {
     match token {
         Some(value) if value == expected => Ok(()),
-        Some(other) => Err(general_err!(
-            "Expected '{}', found token '{}'",
-            expected,
-            other
-        )),
-        None => Err(general_err!(
-            "Expected '{}', but no token found (None)",
-            expected
-        )),
+        Some(other) => Err(general_err!("Expected '{}', found token '{}'", expected, other)),
+        None => Err(general_err!("Expected '{}', but no token found (None)", expected)),
     }
 }
 
 // Utility function to parse i32 or return general error.
-fn parse_i32(
-    value: Option<&str>,
-    not_found_msg: &str,
-    parse_fail_msg: &str,
-) -> Result<i32> {
-    value
-        .ok_or(general_err!(not_found_msg))
-        .and_then(|v| v.parse::<i32>().map_err(|_| general_err!(parse_fail_msg)))
+fn parse_i32(value: Option<&str>, not_found_msg: &str, parse_fail_msg: &str) -> Result<i32> {
+    value.ok_or(general_err!(not_found_msg)).and_then(|v| v.parse::<i32>().map_err(|_| general_err!(parse_fail_msg)))
 }
 
 impl<'a> Parser<'a> {
@@ -166,14 +145,9 @@ impl<'a> Parser<'a> {
         // Check that message type starts with "message".
         match self.tokenizer.next() {
             Some("message") => {
-                let name = self
-                    .tokenizer
-                    .next()
-                    .ok_or(general_err!("Expected name, found None"))?;
+                let name = self.tokenizer.next().ok_or(general_err!("Expected name, found None"))?;
                 let mut fields = self.parse_child_types()?;
-                Type::group_type_builder(name)
-                    .with_fields(&mut fields)
-                    .build()
+                Type::group_type_builder(name).with_fields(&mut fields).build()
             }
             _ => Err(general_err!("Message type does not start with 'message'")),
         }
@@ -197,16 +171,10 @@ impl<'a> Parser<'a> {
 
     fn add_type(&mut self) -> Result<Type> {
         // Parse repetition
-        let repetition = self
-            .tokenizer
-            .next()
-            .ok_or(general_err!("Expected repetition, found None"))
-            .and_then(|v| v.to_uppercase().parse::<Repetition>())?;
+        let repetition = self.tokenizer.next().ok_or(general_err!("Expected repetition, found None")).and_then(|v| v.to_uppercase().parse::<Repetition>())?;
 
         match self.tokenizer.next() {
-            Some(group) if group.to_uppercase() == "GROUP" => {
-                self.add_group_type(Some(repetition))
-            }
+            Some(group) if group.to_uppercase() == "GROUP" => self.add_group_type(Some(repetition)),
             Some(type_string) => {
                 let physical_type = type_string.to_uppercase().parse::<PhysicalType>()?;
                 self.add_primitive_type(repetition, physical_type)
@@ -217,18 +185,11 @@ impl<'a> Parser<'a> {
 
     fn add_group_type(&mut self, repetition: Option<Repetition>) -> Result<Type> {
         // Parse name of the group type
-        let name = self
-            .tokenizer
-            .next()
-            .ok_or(general_err!("Expected name, found None"))?;
+        let name = self.tokenizer.next().ok_or(general_err!("Expected name, found None"))?;
 
         // Parse logical type if exists
         let logical_type = if let Some("(") = self.tokenizer.next() {
-            let tpe = self
-                .tokenizer
-                .next()
-                .ok_or(general_err!("Expected logical type, found None"))
-                .and_then(|v| v.to_uppercase().parse::<LogicalType>())?;
+            let tpe = self.tokenizer.next().ok_or(general_err!("Expected logical type, found None")).and_then(|v| v.to_uppercase().parse::<LogicalType>())?;
             assert_token(self.tokenizer.next(), ")")?;
             tpe
         } else {
@@ -245,9 +206,7 @@ impl<'a> Parser<'a> {
         };
 
         let mut fields = self.parse_child_types()?;
-        let mut builder = Type::group_type_builder(name)
-            .with_logical_type(logical_type)
-            .with_fields(&mut fields);
+        let mut builder = Type::group_type_builder(name).with_logical_type(logical_type).with_fields(&mut fields);
         if let Some(rep) = repetition {
             builder = builder.with_repetition(rep);
         }
@@ -257,36 +216,21 @@ impl<'a> Parser<'a> {
         builder.build()
     }
 
-    fn add_primitive_type(
-        &mut self,
-        repetition: Repetition,
-        physical_type: PhysicalType,
-    ) -> Result<Type> {
+    fn add_primitive_type(&mut self, repetition: Repetition, physical_type: PhysicalType) -> Result<Type> {
         // Read type length if the type is FIXED_LEN_BYTE_ARRAY.
         let mut length: i32 = -1;
         if physical_type == PhysicalType::FIXED_LEN_BYTE_ARRAY {
             assert_token(self.tokenizer.next(), "(")?;
-            length = parse_i32(
-                self.tokenizer.next(),
-                "Expected length for FIXED_LEN_BYTE_ARRAY, found None",
-                "Failed to parse length for FIXED_LEN_BYTE_ARRAY",
-            )?;
+            length = parse_i32(self.tokenizer.next(), "Expected length for FIXED_LEN_BYTE_ARRAY, found None", "Failed to parse length for FIXED_LEN_BYTE_ARRAY")?;
             assert_token(self.tokenizer.next(), ")")?;
         }
 
         // Parse name of the primitive type
-        let name = self
-            .tokenizer
-            .next()
-            .ok_or(general_err!("Expected name, found None"))?;
+        let name = self.tokenizer.next().ok_or(general_err!("Expected name, found None"))?;
 
         // Parse logical type
         let (logical_type, precision, scale) = if let Some("(") = self.tokenizer.next() {
-            let tpe = self
-                .tokenizer
-                .next()
-                .ok_or(general_err!("Expected logical type, found None"))
-                .and_then(|v| v.to_uppercase().parse::<LogicalType>())?;
+            let tpe = self.tokenizer.next().ok_or(general_err!("Expected logical type, found None")).and_then(|v| v.to_uppercase().parse::<LogicalType>())?;
 
             // Parse precision and scale for decimals
             let mut precision: i32 = -1;
@@ -295,19 +239,11 @@ impl<'a> Parser<'a> {
             if tpe == LogicalType::DECIMAL {
                 if let Some("(") = self.tokenizer.next() {
                     // Parse precision
-                    precision = parse_i32(
-                        self.tokenizer.next(),
-                        "Expected precision, found None",
-                        "Failed to parse precision for DECIMAL type",
-                    )?;
+                    precision = parse_i32(self.tokenizer.next(), "Expected precision, found None", "Failed to parse precision for DECIMAL type")?;
 
                     // Parse scale
                     scale = if let Some(",") = self.tokenizer.next() {
-                        parse_i32(
-                            self.tokenizer.next(),
-                            "Expected scale, found None",
-                            "Failed to parse scale for DECIMAL type",
-                        )?
+                        parse_i32(self.tokenizer.next(), "Expected scale, found None", "Failed to parse scale for DECIMAL type")?
                     } else {
                         // Scale is not provided, set it to 0.
                         self.tokenizer.backtrack();
@@ -336,12 +272,7 @@ impl<'a> Parser<'a> {
         };
         assert_token(self.tokenizer.next(), ";")?;
 
-        let mut builder = Type::primitive_type_builder(name, physical_type)
-            .with_repetition(repetition)
-            .with_logical_type(logical_type)
-            .with_length(length)
-            .with_precision(precision)
-            .with_scale(scale);
+        let mut builder = Type::primitive_type_builder(name, physical_type).with_repetition(repetition).with_logical_type(logical_type).with_length(length).with_precision(precision).with_scale(scale);
         if let Some(id) = id {
             builder = builder.with_id(id);
         }
@@ -430,12 +361,8 @@ mod tests {
         assert_eq!(
             res,
             vec![
-                "message", "schema", "{", "required", "int32", "a", ";", "optional",
-                "binary", "c", "(", "UTF8", ")", ";", "required", "group", "d", "{",
-                "required", "int32", "a", ";", "optional", "binary", "c", "(", "UTF8",
-                ")", ";", "}", "required", "group", "e", "(", "LIST", ")", "{",
-                "repeated", "group", "list", "{", "required", "int32", "element", ";",
-                "}", "}", "}"
+                "message", "schema", "{", "required", "int32", "a", ";", "optional", "binary", "c", "(", "UTF8", ")", ";", "required", "group", "d", "{", "required", "int32", "a", ";", "optional", "binary", "c", "(", "UTF8", ")", ";", "}", "required", "group", "e", "(", "LIST", ")", "{",
+                "repeated", "group", "list", "{", "required", "int32", "element", ";", "}", "}", "}"
             ]
         );
     }
@@ -450,29 +377,17 @@ mod tests {
     #[test]
     fn test_parse_message_type_invalid() {
         let mut iter = Tokenizer::from_str("test");
-        let result = Parser {
-            tokenizer: &mut iter,
-        }
-        .parse_message_type();
+        let result = Parser { tokenizer: &mut iter }.parse_message_type();
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "Parquet error: Message type does not start with 'message'"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "Parquet error: Message type does not start with 'message'");
     }
 
     #[test]
     fn test_parse_message_type_no_name() {
         let mut iter = Tokenizer::from_str("message");
-        let result = Parser {
-            tokenizer: &mut iter,
-        }
-        .parse_message_type();
+        let result = Parser { tokenizer: &mut iter }.parse_message_type();
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "Parquet error: Expected name, found None"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "Parquet error: Expected name, found None");
     }
 
     #[test]
@@ -483,10 +398,7 @@ mod tests {
     }
     ";
         let mut iter = Tokenizer::from_str(schema);
-        let result = Parser {
-            tokenizer: &mut iter,
-        }
-        .parse_message_type();
+        let result = Parser { tokenizer: &mut iter }.parse_message_type();
         assert!(result.is_err());
 
         let schema = "
@@ -495,10 +407,7 @@ mod tests {
     }
     ";
         let mut iter = Tokenizer::from_str(schema);
-        let result = Parser {
-            tokenizer: &mut iter,
-        }
-        .parse_message_type();
+        let result = Parser { tokenizer: &mut iter }.parse_message_type();
         assert!(result.is_ok());
     }
 
@@ -514,10 +423,7 @@ mod tests {
     }
     ";
         let mut iter = Tokenizer::from_str(schema);
-        let result = Parser {
-            tokenizer: &mut iter,
-        }
-        .parse_message_type();
+        let result = Parser { tokenizer: &mut iter }.parse_message_type();
         assert!(result.is_err());
 
         // Invalid decimal, need precision and scale
@@ -527,10 +433,7 @@ mod tests {
     }
     ";
         let mut iter = Tokenizer::from_str(schema);
-        let result = Parser {
-            tokenizer: &mut iter,
-        }
-        .parse_message_type();
+        let result = Parser { tokenizer: &mut iter }.parse_message_type();
         assert!(result.is_err());
 
         // Invalid decimal because of `,` - has precision, needs scale
@@ -540,10 +443,7 @@ mod tests {
     }
     ";
         let mut iter = Tokenizer::from_str(schema);
-        let result = Parser {
-            tokenizer: &mut iter,
-        }
-        .parse_message_type();
+        let result = Parser { tokenizer: &mut iter }.parse_message_type();
         assert!(result.is_err());
 
         // Invalid decimal because, we always require either precision or scale to be
@@ -554,10 +454,7 @@ mod tests {
     }
     ";
         let mut iter = Tokenizer::from_str(schema);
-        let result = Parser {
-            tokenizer: &mut iter,
-        }
-        .parse_message_type();
+        let result = Parser { tokenizer: &mut iter }.parse_message_type();
         assert!(result.is_err());
 
         // Valid decimal (precision, scale)
@@ -568,10 +465,7 @@ mod tests {
     }
     ";
         let mut iter = Tokenizer::from_str(schema);
-        let result = Parser {
-            tokenizer: &mut iter,
-        }
-        .parse_message_type();
+        let result = Parser { tokenizer: &mut iter }.parse_message_type();
         assert!(result.is_ok());
     }
 
@@ -584,38 +478,12 @@ mod tests {
     }
     ";
         let mut iter = Tokenizer::from_str(schema);
-        let message = Parser {
-            tokenizer: &mut iter,
-        }
-        .parse_message_type()
-        .unwrap();
+        let message = Parser { tokenizer: &mut iter }.parse_message_type().unwrap();
 
         let expected = Type::group_type_builder("root")
             .with_fields(&mut vec![
-                Rc::new(
-                    Type::primitive_type_builder(
-                        "f1",
-                        PhysicalType::FIXED_LEN_BYTE_ARRAY,
-                    )
-                    .with_logical_type(LogicalType::DECIMAL)
-                    .with_length(5)
-                    .with_precision(9)
-                    .with_scale(3)
-                    .build()
-                    .unwrap(),
-                ),
-                Rc::new(
-                    Type::primitive_type_builder(
-                        "f2",
-                        PhysicalType::FIXED_LEN_BYTE_ARRAY,
-                    )
-                    .with_logical_type(LogicalType::DECIMAL)
-                    .with_length(16)
-                    .with_precision(38)
-                    .with_scale(18)
-                    .build()
-                    .unwrap(),
-                ),
+                Rc::new(Type::primitive_type_builder("f1", PhysicalType::FIXED_LEN_BYTE_ARRAY).with_logical_type(LogicalType::DECIMAL).with_length(5).with_precision(9).with_scale(3).build().unwrap()),
+                Rc::new(Type::primitive_type_builder("f2", PhysicalType::FIXED_LEN_BYTE_ARRAY).with_logical_type(LogicalType::DECIMAL).with_length(16).with_precision(38).with_scale(18).build().unwrap()),
             ])
             .build()
             .unwrap();
@@ -642,11 +510,7 @@ mod tests {
     }
     ";
         let mut iter = Tokenizer::from_str(schema);
-        let message = Parser {
-            tokenizer: &mut iter,
-        }
-        .parse_message_type()
-        .unwrap();
+        let message = Parser { tokenizer: &mut iter }.parse_message_type().unwrap();
 
         let expected = Type::group_type_builder("root")
             .with_fields(&mut vec![Rc::new(
@@ -657,16 +521,7 @@ mod tests {
                             Type::group_type_builder("a1")
                                 .with_repetition(Repetition::OPTIONAL)
                                 .with_logical_type(LogicalType::LIST)
-                                .with_fields(&mut vec![Rc::new(
-                                    Type::primitive_type_builder(
-                                        "a2",
-                                        PhysicalType::BYTE_ARRAY,
-                                    )
-                                    .with_repetition(Repetition::REPEATED)
-                                    .with_logical_type(LogicalType::UTF8)
-                                    .build()
-                                    .unwrap(),
-                                )])
+                                .with_fields(&mut vec![Rc::new(Type::primitive_type_builder("a2", PhysicalType::BYTE_ARRAY).with_repetition(Repetition::REPEATED).with_logical_type(LogicalType::UTF8).build().unwrap())])
                                 .build()
                                 .unwrap(),
                         ),
@@ -677,24 +532,7 @@ mod tests {
                                 .with_fields(&mut vec![Rc::new(
                                     Type::group_type_builder("b2")
                                         .with_repetition(Repetition::REPEATED)
-                                        .with_fields(&mut vec![
-                                            Rc::new(
-                                                Type::primitive_type_builder(
-                                                    "b3",
-                                                    PhysicalType::INT32,
-                                                )
-                                                .build()
-                                                .unwrap(),
-                                            ),
-                                            Rc::new(
-                                                Type::primitive_type_builder(
-                                                    "b4",
-                                                    PhysicalType::DOUBLE,
-                                                )
-                                                .build()
-                                                .unwrap(),
-                                            ),
-                                        ])
+                                        .with_fields(&mut vec![Rc::new(Type::primitive_type_builder("b3", PhysicalType::INT32).build().unwrap()), Rc::new(Type::primitive_type_builder("b4", PhysicalType::DOUBLE).build().unwrap())])
                                         .build()
                                         .unwrap(),
                                 )])
@@ -724,57 +562,18 @@ mod tests {
     }
     ";
         let mut iter = Tokenizer::from_str(schema);
-        let message = Parser {
-            tokenizer: &mut iter,
-        }
-        .parse_message_type()
-        .unwrap();
+        let message = Parser { tokenizer: &mut iter }.parse_message_type().unwrap();
 
         let mut fields = vec![
-            Rc::new(
-                Type::primitive_type_builder("_1", PhysicalType::INT32)
-                    .with_repetition(Repetition::REQUIRED)
-                    .with_logical_type(LogicalType::INT_8)
-                    .build()
-                    .unwrap(),
-            ),
-            Rc::new(
-                Type::primitive_type_builder("_2", PhysicalType::INT32)
-                    .with_repetition(Repetition::REQUIRED)
-                    .with_logical_type(LogicalType::INT_16)
-                    .build()
-                    .unwrap(),
-            ),
-            Rc::new(
-                Type::primitive_type_builder("_3", PhysicalType::FLOAT)
-                    .with_repetition(Repetition::REQUIRED)
-                    .build()
-                    .unwrap(),
-            ),
-            Rc::new(
-                Type::primitive_type_builder("_4", PhysicalType::DOUBLE)
-                    .with_repetition(Repetition::REQUIRED)
-                    .build()
-                    .unwrap(),
-            ),
-            Rc::new(
-                Type::primitive_type_builder("_5", PhysicalType::INT32)
-                    .with_logical_type(LogicalType::DATE)
-                    .build()
-                    .unwrap(),
-            ),
-            Rc::new(
-                Type::primitive_type_builder("_6", PhysicalType::BYTE_ARRAY)
-                    .with_logical_type(LogicalType::UTF8)
-                    .build()
-                    .unwrap(),
-            ),
+            Rc::new(Type::primitive_type_builder("_1", PhysicalType::INT32).with_repetition(Repetition::REQUIRED).with_logical_type(LogicalType::INT_8).build().unwrap()),
+            Rc::new(Type::primitive_type_builder("_2", PhysicalType::INT32).with_repetition(Repetition::REQUIRED).with_logical_type(LogicalType::INT_16).build().unwrap()),
+            Rc::new(Type::primitive_type_builder("_3", PhysicalType::FLOAT).with_repetition(Repetition::REQUIRED).build().unwrap()),
+            Rc::new(Type::primitive_type_builder("_4", PhysicalType::DOUBLE).with_repetition(Repetition::REQUIRED).build().unwrap()),
+            Rc::new(Type::primitive_type_builder("_5", PhysicalType::INT32).with_logical_type(LogicalType::DATE).build().unwrap()),
+            Rc::new(Type::primitive_type_builder("_6", PhysicalType::BYTE_ARRAY).with_logical_type(LogicalType::UTF8).build().unwrap()),
         ];
 
-        let expected = Type::group_type_builder("root")
-            .with_fields(&mut fields)
-            .build()
-            .unwrap();
+        let expected = Type::group_type_builder("root").with_fields(&mut fields).build().unwrap();
         assert_eq!(message, expected);
     }
 }

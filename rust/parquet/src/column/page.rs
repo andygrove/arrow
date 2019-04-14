@@ -116,10 +116,7 @@ impl CompressedPage {
     /// Creates `CompressedPage` from a page with potentially compressed buffer and
     /// uncompressed size.
     pub fn new(compressed_page: Page, uncompressed_size: usize) -> Self {
-        Self {
-            compressed_page,
-            uncompressed_size,
-        }
+        Self { compressed_page, uncompressed_size }
     }
 
     /// Returns page type.
@@ -235,10 +232,7 @@ mod tests {
         assert_eq!(data_page.buffer().data(), vec![0, 1, 2].as_slice());
         assert_eq!(data_page.num_values(), 10);
         assert_eq!(data_page.encoding(), Encoding::PLAIN);
-        assert_eq!(
-            data_page.statistics(),
-            Some(&Statistics::int32(Some(1), Some(2), None, 1, true))
-        );
+        assert_eq!(data_page.statistics(), Some(&Statistics::int32(Some(1), Some(2), None, 1, true)));
 
         let data_page_v2 = Page::DataPageV2 {
             buf: ByteBufferPtr::new(vec![0, 1, 2]),
@@ -255,10 +249,7 @@ mod tests {
         assert_eq!(data_page_v2.buffer().data(), vec![0, 1, 2].as_slice());
         assert_eq!(data_page_v2.num_values(), 10);
         assert_eq!(data_page_v2.encoding(), Encoding::PLAIN);
-        assert_eq!(
-            data_page_v2.statistics(),
-            Some(&Statistics::int32(Some(1), Some(2), None, 1, true))
-        );
+        assert_eq!(data_page_v2.statistics(), Some(&Statistics::int32(Some(1), Some(2), None, 1, true)));
 
         let dict_page = Page::DictionaryPage {
             buf: ByteBufferPtr::new(vec![0, 1, 2]),

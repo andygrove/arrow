@@ -56,44 +56,21 @@ pub fn expr_to_field(e: &Expr, input_schema: &Schema) -> Result<Field> {
     match e {
         Expr::Column(i) => Ok(input_schema.fields()[*i].clone()),
         Expr::Literal(ref lit) => Ok(Field::new("lit", lit.get_datatype(), true)),
-        Expr::ScalarFunction {
-            ref name,
-            ref return_type,
-            ..
-        } => Ok(Field::new(&name, return_type.clone(), true)),
-        Expr::AggregateFunction {
-            ref name,
-            ref return_type,
-            ..
-        } => Ok(Field::new(&name, return_type.clone(), true)),
-        Expr::Cast { ref data_type, .. } => {
-            Ok(Field::new("cast", data_type.clone(), true))
-        }
-        Expr::BinaryExpr {
-            ref left,
-            ref right,
-            ..
-        } => {
+        Expr::ScalarFunction { ref name, ref return_type, .. } => Ok(Field::new(&name, return_type.clone(), true)),
+        Expr::AggregateFunction { ref name, ref return_type, .. } => Ok(Field::new(&name, return_type.clone(), true)),
+        Expr::Cast { ref data_type, .. } => Ok(Field::new("cast", data_type.clone(), true)),
+        Expr::BinaryExpr { ref left, ref right, .. } => {
             let left_type = left.get_type(input_schema);
             let right_type = right.get_type(input_schema);
-            Ok(Field::new(
-                "binary_expr",
-                get_supertype(&left_type, &right_type).unwrap(),
-                true,
-            ))
+            Ok(Field::new("binary_expr", get_supertype(&left_type, &right_type).unwrap(), true))
         }
-        _ => Err(ExecutionError::NotImplemented(format!(
-            "Cannot determine schema type for expression {:?}",
-            e
-        ))),
+        _ => Err(ExecutionError::NotImplemented(format!("Cannot determine schema type for expression {:?}", e))),
     }
 }
 
 /// Create field meta-data from an expression, for use in a result set schema
 pub fn exprlist_to_fields(expr: &Vec<Expr>, input_schema: &Schema) -> Result<Vec<Field>> {
-    expr.iter()
-        .map(|e| expr_to_field(e, input_schema))
-        .collect()
+    expr.iter().map(|e| expr_to_field(e, input_schema)).collect()
 }
 
 /// Given two datatypes, determine the supertype that both types can safely be cast to
@@ -102,10 +79,7 @@ pub fn get_supertype(l: &DataType, r: &DataType) -> Result<DataType> {
         Some(dt) => Ok(dt),
         None => match _get_supertype(r, l) {
             Some(dt) => Ok(dt),
-            None => Err(ExecutionError::InternalError(format!(
-                "Failed to determine supertype of {:?} and {:?}",
-                l, r
-            ))),
+            None => Err(ExecutionError::InternalError(format!("Failed to determine supertype of {:?} and {:?}", l, r))),
         },
     }
 }

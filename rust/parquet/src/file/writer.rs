@@ -34,10 +34,7 @@ use crate::column::{
     writer::{get_column_writer, ColumnWriter},
 };
 use crate::errors::{ParquetError, Result};
-use crate::file::{
-    metadata::*, properties::WriterPropertiesPtr,
-    statistics::to_thrift as statistics_to_thrift, FOOTER_SIZE, PARQUET_MAGIC,
-};
+use crate::file::{metadata::*, properties::WriterPropertiesPtr, statistics::to_thrift as statistics_to_thrift, FOOTER_SIZE, PARQUET_MAGIC};
 use crate::schema::types::{self, SchemaDescPtr, SchemaDescriptor, TypePtr};
 use crate::util::io::{FileSink, Position};
 
@@ -130,11 +127,7 @@ pub struct SerializedFileWriter {
 
 impl SerializedFileWriter {
     /// Creates new file writer.
-    pub fn new(
-        mut file: File,
-        schema: TypePtr,
-        properties: WriterPropertiesPtr,
-    ) -> Result<Self> {
+    pub fn new(mut file: File, schema: TypePtr, properties: WriterPropertiesPtr) -> Result<Self> {
         Self::start_file(&mut file)?;
         Ok(Self {
             file,
@@ -155,10 +148,7 @@ impl SerializedFileWriter {
     }
 
     /// Finalises active row group writer, otherwise no-op.
-    fn finalise_row_group_writer(
-        &mut self,
-        mut row_group_writer: Box<RowGroupWriter>,
-    ) -> Result<()> {
+    fn finalise_row_group_writer(&mut self, mut row_group_writer: Box<RowGroupWriter>) -> Result<()> {
         let row_group_metadata = row_group_writer.close()?;
         self.row_groups.push(row_group_metadata);
         Ok(())
@@ -170,12 +160,7 @@ impl SerializedFileWriter {
             version: self.props.writer_version().as_num(),
             schema: types::to_thrift(self.schema.as_ref())?,
             num_rows: self.total_num_rows as i64,
-            row_groups: self
-                .row_groups
-                .as_slice()
-                .into_iter()
-                .map(|v| v.to_thrift())
-                .collect(),
+            row_groups: self.row_groups.as_slice().into_iter().map(|v| v.to_thrift()).collect(),
             key_value_metadata: None,
             created_by: Some(self.props.created_by().to_owned()),
             column_orders: None,
@@ -223,11 +208,7 @@ impl FileWriter for SerializedFileWriter {
     fn next_row_group(&mut self) -> Result<Box<RowGroupWriter>> {
         self.assert_closed()?;
         self.assert_previous_writer_closed()?;
-        let row_group_writer = SerializedRowGroupWriter::new(
-            self.descr.clone(),
-            self.props.clone(),
-            &self.file,
-        );
+        let row_group_writer = SerializedRowGroupWriter::new(self.descr.clone(), self.props.clone(), &self.file);
         self.previous_writer_closed = false;
         Ok(Box::new(row_group_writer))
     }
@@ -266,11 +247,7 @@ pub struct SerializedRowGroupWriter {
 }
 
 impl SerializedRowGroupWriter {
-    pub fn new(
-        schema_descr: SchemaDescPtr,
-        properties: WriterPropertiesPtr,
-        file: &File,
-    ) -> Self {
+    pub fn new(schema_descr: SchemaDescPtr, properties: WriterPropertiesPtr, file: &File) -> Self {
         let num_columns = schema_descr.num_columns();
         Self {
             descr: schema_descr,
@@ -303,11 +280,7 @@ impl SerializedRowGroupWriter {
         self.column_chunks.push(Rc::new(metadata));
         if let Some(rows) = self.total_rows_written {
             if rows != rows_written {
-                return Err(general_err!(
-                    "Incorrect number of rows, expected {} != {} rows",
-                    rows,
-                    rows_written
-                ));
+                return Err(general_err!("Incorrect number of rows, expected {} != {} rows", rows, rows_written));
             }
         } else {
             self.total_rows_written = Some(rows_written);
@@ -346,11 +319,7 @@ impl RowGroupWriter for SerializedRowGroupWriter {
         }
         let sink = FileSink::new(&self.file);
         let page_writer = Box::new(SerializedPageWriter::new(sink));
-        let column_writer = get_column_writer(
-            self.descr.column(self.column_index),
-            self.props.clone(),
-            page_writer,
-        );
+        let column_writer = get_column_writer(self.descr.column(self.column_index), self.props.clone(), page_writer);
         self.column_index += 1;
         self.previous_writer_closed = false;
 
@@ -443,10 +412,7 @@ impl<T: Write + Position> PageWriter for SerializedPageWriter<T> {
 
         match page.compressed_page() {
             &Page::DataPage {
-                def_level_encoding,
-                rep_level_encoding,
-                ref statistics,
-                ..
+                def_level_encoding, rep_level_encoding, ref statistics, ..
             } => {
                 let data_page_header = parquet::DataPageHeader {
                     num_values: num_values as i32,
@@ -575,18 +541,8 @@ mod tests {
 
     #[test]
     fn test_row_group_writer_error_not_all_columns_written() {
-        let file =
-            get_temp_file("test_row_group_writer_error_not_all_columns_written", &[]);
-        let schema = Rc::new(
-            types::Type::group_type_builder("schema")
-                .with_fields(&mut vec![Rc::new(
-                    types::Type::primitive_type_builder("col1", Type::INT32)
-                        .build()
-                        .unwrap(),
-                )])
-                .build()
-                .unwrap(),
-        );
+        let file = get_temp_file("test_row_group_writer_error_not_all_columns_written", &[]);
+        let schema = Rc::new(types::Type::group_type_builder("schema").with_fields(&mut vec![Rc::new(types::Type::primitive_type_builder("col1", Type::INT32).build().unwrap())]).build().unwrap());
         let props = Rc::new(WriterProperties::builder().build());
         let mut writer = SerializedFileWriter::new(file, schema, props).unwrap();
         let mut row_group_writer = writer.next_row_group().unwrap();
@@ -603,18 +559,8 @@ mod tests {
         let schema = Rc::new(
             types::Type::group_type_builder("schema")
                 .with_fields(&mut vec![
-                    Rc::new(
-                        types::Type::primitive_type_builder("col1", Type::INT32)
-                            .with_repetition(Repetition::REQUIRED)
-                            .build()
-                            .unwrap(),
-                    ),
-                    Rc::new(
-                        types::Type::primitive_type_builder("col2", Type::INT32)
-                            .with_repetition(Repetition::REQUIRED)
-                            .build()
-                            .unwrap(),
-                    ),
+                    Rc::new(types::Type::primitive_type_builder("col1", Type::INT32).with_repetition(Repetition::REQUIRED).build().unwrap()),
+                    Rc::new(types::Type::primitive_type_builder("col2", Type::INT32).with_repetition(Repetition::REQUIRED).build().unwrap()),
                 ])
                 .build()
                 .unwrap(),
@@ -637,10 +583,7 @@ mod tests {
         let res = row_group_writer.close_column(col_writer);
         assert!(res.is_err());
         if let Err(err) = res {
-            assert_eq!(
-                err.description(),
-                "Incorrect number of rows, expected 3 != 2 rows"
-            );
+            assert_eq!(err.description(), "Incorrect number of rows, expected 3 != 2 rows");
         }
     }
 
@@ -648,19 +591,9 @@ mod tests {
     fn test_file_writer_empty_file() {
         let file = get_temp_file("test_file_writer_write_empty_file", &[]);
 
-        let schema = Rc::new(
-            types::Type::group_type_builder("schema")
-                .with_fields(&mut vec![Rc::new(
-                    types::Type::primitive_type_builder("col1", Type::INT32)
-                        .build()
-                        .unwrap(),
-                )])
-                .build()
-                .unwrap(),
-        );
+        let schema = Rc::new(types::Type::group_type_builder("schema").with_fields(&mut vec![Rc::new(types::Type::primitive_type_builder("col1", Type::INT32).build().unwrap())]).build().unwrap());
         let props = Rc::new(WriterProperties::builder().build());
-        let mut writer =
-            SerializedFileWriter::new(file.try_clone().unwrap(), schema, props).unwrap();
+        let mut writer = SerializedFileWriter::new(file.try_clone().unwrap(), schema, props).unwrap();
         writer.close().unwrap();
 
         let reader = SerializedFileReader::new(file).unwrap();
@@ -682,24 +615,13 @@ mod tests {
     #[test]
     fn test_file_writer_multiple_row_groups() {
         let file = get_temp_file("test_file_writer_write_multiple_row_groups", &[]);
-        test_file_roundtrip(
-            file,
-            vec![
-                vec![1, 2, 3, 4, 5],
-                vec![1, 2, 3],
-                vec![1],
-                vec![1, 2, 3, 4, 5, 6],
-            ],
-        );
+        test_file_roundtrip(file, vec![vec![1, 2, 3, 4, 5], vec![1, 2, 3], vec![1], vec![1, 2, 3, 4, 5, 6]]);
     }
 
     #[test]
     fn test_file_writer_multiple_large_row_groups() {
         let file = get_temp_file("test_file_writer_multiple_large_row_groups", &[]);
-        test_file_roundtrip(
-            file,
-            vec![vec![123; 1024], vec![124; 1000], vec![125; 15], vec![]],
-        );
+        test_file_roundtrip(file, vec![vec![123; 1024], vec![124; 1000], vec![125; 15], vec![]]);
     }
 
     #[test]
@@ -793,10 +715,7 @@ mod tests {
                         encoding,
                         def_level_encoding,
                         rep_level_encoding,
-                        statistics: from_thrift(
-                            physical_type,
-                            to_thrift(statistics.as_ref()),
-                        ),
+                        statistics: from_thrift(physical_type, to_thrift(statistics.as_ref())),
                     }
                 }
                 &Page::DataPageV2 {
@@ -812,8 +731,7 @@ mod tests {
                 } => {
                     total_num_values += num_values as i64;
                     let offset = (def_levels_byte_len + rep_levels_byte_len) as usize;
-                    let cmp_buf =
-                        compress_helper(compressor.as_mut(), &buf.data()[offset..]);
+                    let cmp_buf = compress_helper(compressor.as_mut(), &buf.data()[offset..]);
                     let mut output_buf = Vec::from(&buf.data()[..offset]);
                     output_buf.extend_from_slice(&cmp_buf[..]);
 
@@ -826,18 +744,10 @@ mod tests {
                         def_levels_byte_len,
                         rep_levels_byte_len,
                         is_compressed: compressor.is_some(),
-                        statistics: from_thrift(
-                            physical_type,
-                            to_thrift(statistics.as_ref()),
-                        ),
+                        statistics: from_thrift(physical_type, to_thrift(statistics.as_ref())),
                     }
                 }
-                &Page::DictionaryPage {
-                    ref buf,
-                    num_values,
-                    encoding,
-                    is_sorted,
-                } => {
+                &Page::DictionaryPage { ref buf, num_values, encoding, is_sorted } => {
                     let output_buf = compress_helper(compressor.as_mut(), buf.data());
 
                     Page::DictionaryPage {
@@ -865,13 +775,7 @@ mod tests {
             page_writer.close().unwrap();
         }
         {
-            let mut page_reader = SerializedPageReader::new(
-                Cursor::new(&buffer),
-                total_num_values,
-                codec,
-                physical_type,
-            )
-            .unwrap();
+            let mut page_reader = SerializedPageReader::new(Cursor::new(&buffer), total_num_values, codec, physical_type).unwrap();
 
             while let Some(page) = page_reader.get_next_page().unwrap() {
                 result_pages.push(page);
@@ -909,18 +813,12 @@ mod tests {
     fn test_file_roundtrip(file: File, data: Vec<Vec<i32>>) {
         let schema = Rc::new(
             types::Type::group_type_builder("schema")
-                .with_fields(&mut vec![Rc::new(
-                    types::Type::primitive_type_builder("col1", Type::INT32)
-                        .with_repetition(Repetition::REQUIRED)
-                        .build()
-                        .unwrap(),
-                )])
+                .with_fields(&mut vec![Rc::new(types::Type::primitive_type_builder("col1", Type::INT32).with_repetition(Repetition::REQUIRED).build().unwrap())])
                 .build()
                 .unwrap(),
         );
         let props = Rc::new(WriterProperties::builder().build());
-        let mut file_writer =
-            SerializedFileWriter::new(file.try_clone().unwrap(), schema, props).unwrap();
+        let mut file_writer = SerializedFileWriter::new(file.try_clone().unwrap(), schema, props).unwrap();
 
         for subset in &data {
             let mut row_group_writer = file_writer.next_row_group().unwrap();
@@ -946,9 +844,7 @@ mod tests {
         for i in 0..reader.num_row_groups() {
             let row_group_reader = reader.get_row_group(i).unwrap();
             let iter = row_group_reader.get_row_iter(None).unwrap();
-            let res = iter
-                .map(|elem| elem.get_int(0).unwrap())
-                .collect::<Vec<i32>>();
+            let res = iter.map(|elem| elem.get_int(0).unwrap()).collect::<Vec<i32>>();
             assert_eq!(res, data[i]);
         }
     }

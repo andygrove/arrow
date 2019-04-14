@@ -39,19 +39,11 @@
 //! // Build the array
 //! let array = builder.finish();
 //!
-//! assert_eq!(
-//!     5,
-//!     array.len(),
-//!     "The array has 5 values, counting the null value"
-//! );
+//! assert_eq!(5, array.len(), "The array has 5 values, counting the null value");
 //!
 //! assert_eq!(2, array.value(2), "Get the value with index 2");
 //!
-//! assert_eq!(
-//!     array.value_slice(3, 2),
-//!     &[3, 4],
-//!     "Get slice of len 2 starting at idx 3"
-//! )
+//! assert_eq!(array.value_slice(3, 2), &[3, 4], "Get slice of len 2 starting at idx 3")
 //! ```
 
 use std::any::Any;
@@ -166,8 +158,7 @@ fn slice_data(data: ArrayDataRef, mut offset: usize, length: usize) -> ArrayData
     // Calculate the new null count based on the offset
     new_data.null_count = if let Some(bitmap) = new_data.null_bitmap() {
         let valid_bits = bitmap.bits.data();
-        len.checked_sub(bit_util::count_set_bits_offset(valid_bits, offset, length))
-            .unwrap()
+        len.checked_sub(bit_util::count_set_bits_offset(valid_bits, offset, length)).unwrap()
     } else {
         0
     };
@@ -248,12 +239,7 @@ impl<T: ArrowPrimitiveType> Array for PrimitiveArray<T> {
 /// Boolean arrays are bit-packed and so implemented separately.
 impl<T: ArrowNumericType> PrimitiveArray<T> {
     pub fn new(length: usize, values: Buffer, null_count: usize, offset: usize) -> Self {
-        let array_data = ArrayData::builder(T::get_data_type())
-            .len(length)
-            .add_buffer(values)
-            .null_count(null_count)
-            .offset(offset)
-            .build();
+        let array_data = ArrayData::builder(T::get_data_type()).len(length).add_buffer(values).null_count(null_count).offset(offset).build();
         PrimitiveArray::from(array_data)
     }
 
@@ -271,9 +257,7 @@ impl<T: ArrowNumericType> PrimitiveArray<T> {
 
     /// Returns a raw pointer to the values of this array.
     pub fn raw_values(&self) -> *const T::Native {
-        unsafe {
-            mem::transmute(self.raw_values.get().offset(self.data.offset() as isize))
-        }
+        unsafe { mem::transmute(self.raw_values.get().offset(self.data.offset() as isize)) }
     }
 
     /// Returns the primitive value at index `i`.
@@ -287,9 +271,7 @@ impl<T: ArrowNumericType> PrimitiveArray<T> {
     ///
     /// Note this doesn't do any bound checking, for performance reason.
     pub fn value_slice(&self, offset: usize, len: usize) -> &[T::Native] {
-        let raw = unsafe {
-            std::slice::from_raw_parts(self.raw_values().offset(offset as isize), len)
-        };
+        let raw = unsafe { std::slice::from_raw_parts(self.raw_values().offset(offset as isize), len) };
         &raw[..]
     }
 
@@ -368,9 +350,7 @@ where
                 // safe to immediately cast to u32 as `self.value(i)` is positive i32
                 let v = i64::from(self.value(i)) as u32;
                 match unit {
-                    TimeUnit::Second => {
-                        Some(NaiveTime::from_num_seconds_from_midnight(v, 0))
-                    }
+                    TimeUnit::Second => Some(NaiveTime::from_num_seconds_from_midnight(v, 0)),
                     TimeUnit::Millisecond => {
                         Some(NaiveTime::from_num_seconds_from_midnight(
                             // extract seconds from milliseconds
@@ -410,9 +390,7 @@ where
                 Some(datetime) => Some(datetime.time()),
                 None => None,
             },
-            DataType::Date32(_) | DataType::Date64(_) => {
-                Some(NaiveTime::from_hms(0, 0, 0))
-            }
+            DataType::Date32(_) | DataType::Date64(_) => Some(NaiveTime::from_hms(0, 0, 0)),
             DataType::Interval(_) => None,
             _ => None,
         }
@@ -444,18 +422,14 @@ where
                 write!(f, "  null,\n")?;
             } else {
                 match T::get_data_type() {
-                    DataType::Date32(_) | DataType::Date64(_) => {
-                        match self.value_as_date(i) {
-                            Some(date) => write!(f, "  {:?},\n", date)?,
-                            None => write!(f, "  null,\n")?,
-                        }
-                    }
-                    DataType::Time32(_) | DataType::Time64(_) => {
-                        match self.value_as_time(i) {
-                            Some(time) => write!(f, "  {:?},\n", time)?,
-                            None => write!(f, "  null,\n")?,
-                        }
-                    }
+                    DataType::Date32(_) | DataType::Date64(_) => match self.value_as_date(i) {
+                        Some(date) => write!(f, "  {:?},\n", date)?,
+                        None => write!(f, "  null,\n")?,
+                    },
+                    DataType::Time32(_) | DataType::Time64(_) => match self.value_as_time(i) {
+                        Some(time) => write!(f, "  {:?},\n", time)?,
+                        None => write!(f, "  null,\n")?,
+                    },
                     DataType::Timestamp(_) => match self.value_as_datetime(i) {
                         Some(datetime) => write!(f, "  {:?},\n", datetime)?,
                         None => write!(f, "  null,\n")?,
@@ -471,12 +445,7 @@ where
 /// Specific implementation for Boolean arrays due to bit-packing
 impl PrimitiveArray<BooleanType> {
     pub fn new(length: usize, values: Buffer, null_count: usize, offset: usize) -> Self {
-        let array_data = ArrayData::builder(DataType::Boolean)
-            .len(length)
-            .add_buffer(values)
-            .null_count(null_count)
-            .offset(offset)
-            .build();
+        let array_data = ArrayData::builder(DataType::Boolean).len(length).add_buffer(values).null_count(null_count).offset(offset).build();
         BooleanArray::from(array_data)
     }
 
@@ -521,10 +490,7 @@ macro_rules! def_numeric_from_vec {
     ( $ty:ident, $native_ty:ident, $ty_id:expr ) => {
         impl From<Vec<$native_ty>> for PrimitiveArray<$ty> {
             fn from(data: Vec<$native_ty>) -> Self {
-                let array_data = ArrayData::builder($ty_id)
-                    .len(data.len())
-                    .add_buffer(Buffer::from(data.to_byte_slice()))
-                    .build();
+                let array_data = ArrayData::builder($ty_id).len(data.len()).add_buffer(Buffer::from(data.to_byte_slice())).build();
                 PrimitiveArray::from(array_data)
             }
         }
@@ -534,10 +500,8 @@ macro_rules! def_numeric_from_vec {
             fn from(data: Vec<Option<$native_ty>>) -> Self {
                 let data_len = data.len();
                 let num_bytes = bit_util::ceil(data_len, 8);
-                let mut null_buf =
-                    MutableBuffer::new(num_bytes).with_bitset(num_bytes, false);
-                let mut val_buf =
-                    MutableBuffer::new(data_len * mem::size_of::<$native_ty>());
+                let mut null_buf = MutableBuffer::new(num_bytes).with_bitset(num_bytes, false);
+                let mut val_buf = MutableBuffer::new(data_len * mem::size_of::<$native_ty>());
 
                 {
                     let null = vec![0; mem::size_of::<$native_ty>()];
@@ -554,11 +518,7 @@ macro_rules! def_numeric_from_vec {
                     }
                 }
 
-                let array_data = ArrayData::builder($ty_id)
-                    .len(data_len)
-                    .add_buffer(val_buf.freeze())
-                    .null_bit_buffer(null_buf.freeze())
-                    .build();
+                let array_data = ArrayData::builder($ty_id).len(data_len).add_buffer(val_buf.freeze()).null_bit_buffer(null_buf.freeze()).build();
                 PrimitiveArray::from(array_data)
             }
         }
@@ -577,44 +537,16 @@ def_numeric_from_vec!(Float32Type, f32, DataType::Float32);
 def_numeric_from_vec!(Float64Type, f64, DataType::Float64);
 // TODO: add temporal arrays
 
-def_numeric_from_vec!(
-    TimestampSecondType,
-    i64,
-    DataType::Timestamp(TimeUnit::Second)
-);
-def_numeric_from_vec!(
-    TimestampMillisecondType,
-    i64,
-    DataType::Timestamp(TimeUnit::Millisecond)
-);
-def_numeric_from_vec!(
-    TimestampMicrosecondType,
-    i64,
-    DataType::Timestamp(TimeUnit::Microsecond)
-);
-def_numeric_from_vec!(
-    TimestampNanosecondType,
-    i64,
-    DataType::Timestamp(TimeUnit::Nanosecond)
-);
+def_numeric_from_vec!(TimestampSecondType, i64, DataType::Timestamp(TimeUnit::Second));
+def_numeric_from_vec!(TimestampMillisecondType, i64, DataType::Timestamp(TimeUnit::Millisecond));
+def_numeric_from_vec!(TimestampMicrosecondType, i64, DataType::Timestamp(TimeUnit::Microsecond));
+def_numeric_from_vec!(TimestampNanosecondType, i64, DataType::Timestamp(TimeUnit::Nanosecond));
 def_numeric_from_vec!(Date32Type, i32, DataType::Date32(DateUnit::Day));
 def_numeric_from_vec!(Date64Type, i64, DataType::Date64(DateUnit::Millisecond));
 def_numeric_from_vec!(Time32SecondType, i32, DataType::Time32(TimeUnit::Second));
-def_numeric_from_vec!(
-    Time32MillisecondType,
-    i32,
-    DataType::Time32(TimeUnit::Millisecond)
-);
-def_numeric_from_vec!(
-    Time64MicrosecondType,
-    i64,
-    DataType::Time64(TimeUnit::Microsecond)
-);
-def_numeric_from_vec!(
-    Time64NanosecondType,
-    i64,
-    DataType::Time64(TimeUnit::Nanosecond)
-);
+def_numeric_from_vec!(Time32MillisecondType, i32, DataType::Time32(TimeUnit::Millisecond));
+def_numeric_from_vec!(Time64MicrosecondType, i64, DataType::Time64(TimeUnit::Microsecond));
+def_numeric_from_vec!(Time64NanosecondType, i64, DataType::Time64(TimeUnit::Nanosecond));
 
 /// Constructs a boolean array from a vector. Should only be used for testing.
 impl From<Vec<bool>> for BooleanArray {
@@ -629,10 +561,7 @@ impl From<Vec<bool>> for BooleanArray {
                 }
             }
         }
-        let array_data = ArrayData::builder(DataType::Boolean)
-            .len(data.len())
-            .add_buffer(mut_buf.freeze())
-            .build();
+        let array_data = ArrayData::builder(DataType::Boolean).len(data.len()).add_buffer(mut_buf.freeze()).build();
         BooleanArray::from(array_data)
     }
 }
@@ -658,11 +587,7 @@ impl From<Vec<Option<bool>>> for BooleanArray {
             }
         }
 
-        let array_data = ArrayData::builder(DataType::Boolean)
-            .len(data_len)
-            .add_buffer(val_buf.freeze())
-            .null_bit_buffer(null_buf.freeze())
-            .build();
+        let array_data = ArrayData::builder(DataType::Boolean).len(data_len).add_buffer(val_buf.freeze()).null_bit_buffer(null_buf.freeze()).build();
         BooleanArray::from(array_data)
     }
 }
@@ -670,16 +595,9 @@ impl From<Vec<Option<bool>>> for BooleanArray {
 /// Constructs a `PrimitiveArray` from an array data reference.
 impl<T: ArrowPrimitiveType> From<ArrayDataRef> for PrimitiveArray<T> {
     default fn from(data: ArrayDataRef) -> Self {
-        assert_eq!(
-            data.buffers().len(),
-            1,
-            "PrimitiveArray data should contain a single buffer only (values buffer)"
-        );
+        assert_eq!(data.buffers().len(), 1, "PrimitiveArray data should contain a single buffer only (values buffer)");
         let raw_values = data.buffers()[0].raw_data();
-        assert!(
-            memory::is_aligned::<u8>(raw_values, mem::align_of::<T::Native>()),
-            "memory is not aligned"
-        );
+        assert!(memory::is_aligned::<u8>(raw_values, mem::align_of::<T::Native>()), "memory is not aligned");
         Self {
             data,
             raw_values: RawPtrBox::new(raw_values as *const T::Native),
@@ -732,22 +650,11 @@ impl ListArray {
 /// Constructs a `ListArray` from an array data reference.
 impl From<ArrayDataRef> for ListArray {
     fn from(data: ArrayDataRef) -> Self {
-        assert_eq!(
-            data.buffers().len(),
-            1,
-            "ListArray data should contain a single buffer only (value offsets)"
-        );
-        assert_eq!(
-            data.child_data().len(),
-            1,
-            "ListArray should contain a single child array (values array)"
-        );
+        assert_eq!(data.buffers().len(), 1, "ListArray data should contain a single buffer only (value offsets)");
+        assert_eq!(data.child_data().len(), 1, "ListArray should contain a single child array (values array)");
         let values = make_array(data.child_data()[0].clone());
         let raw_value_offsets = data.buffers()[0].raw_data();
-        assert!(
-            memory::is_aligned(raw_value_offsets, mem::align_of::<i32>()),
-            "memory is not aligned"
-        );
+        assert!(memory::is_aligned(raw_value_offsets, mem::align_of::<i32>()), "memory is not aligned");
         let value_offsets = raw_value_offsets as *const i32;
         unsafe {
             assert_eq!(*value_offsets.offset(0), 0, "offsets do not start at zero");
@@ -788,10 +695,7 @@ impl BinaryArray {
         let offset = i.checked_add(self.data.offset()).unwrap();
         unsafe {
             let pos = self.value_offset_at(offset);
-            ::std::slice::from_raw_parts(
-                self.value_data.get().offset(pos as isize),
-                (self.value_offset_at(offset + 1) - pos) as usize,
-            )
+            ::std::slice::from_raw_parts(self.value_data.get().offset(pos as isize), (self.value_offset_at(offset + 1) - pos) as usize)
         }
     }
 
@@ -828,16 +732,9 @@ impl BinaryArray {
 
 impl From<ArrayDataRef> for BinaryArray {
     fn from(data: ArrayDataRef) -> Self {
-        assert_eq!(
-            data.buffers().len(),
-            2,
-            "BinaryArray data should contain 2 buffers only (offsets and values)"
-        );
+        assert_eq!(data.buffers().len(), 2, "BinaryArray data should contain 2 buffers only (offsets and values)");
         let raw_value_offsets = data.buffers()[0].raw_data();
-        assert!(
-            memory::is_aligned(raw_value_offsets, mem::align_of::<i32>()),
-            "memory is not aligned"
-        );
+        assert!(memory::is_aligned(raw_value_offsets, mem::align_of::<i32>()), "memory is not aligned");
         let value_data = data.buffers()[1].raw_data();
         Self {
             data: data.clone(),
@@ -858,11 +755,7 @@ impl<'a> From<Vec<&'a str>> for BinaryArray {
             offsets.push(length_so_far as i32);
             values.extend_from_slice(s.as_bytes());
         }
-        let array_data = ArrayData::builder(DataType::Utf8)
-            .len(v.len())
-            .add_buffer(Buffer::from(offsets.to_byte_slice()))
-            .add_buffer(Buffer::from(&values[..]))
-            .build();
+        let array_data = ArrayData::builder(DataType::Utf8).len(v.len()).add_buffer(Buffer::from(offsets.to_byte_slice())).add_buffer(Buffer::from(&values[..])).build();
         BinaryArray::from(array_data)
     }
 }
@@ -878,11 +771,7 @@ impl<'a> From<Vec<&[u8]>> for BinaryArray {
             offsets.push(length_so_far as i32);
             values.extend_from_slice(s);
         }
-        let array_data = ArrayData::builder(DataType::Utf8)
-            .len(v.len())
-            .add_buffer(Buffer::from(offsets.to_byte_slice()))
-            .add_buffer(Buffer::from(&values[..]))
-            .build();
+        let array_data = ArrayData::builder(DataType::Utf8).len(v.len()).add_buffer(Buffer::from(offsets.to_byte_slice())).add_buffer(Buffer::from(&values[..])).build();
         BinaryArray::from(array_data)
     }
 }
@@ -896,20 +785,11 @@ impl From<ListArray> for BinaryArray {
             "BinaryArray can only be created from list array of u8 values \
              (i.e. List<PrimitiveArray<u8>>)."
         );
-        assert_eq!(
-            v.data().child_data()[0].data_type(),
-            &DataType::UInt8,
-            "BinaryArray can only be created from List<u8> arrays, mismatched data types."
-        );
+        assert_eq!(v.data().child_data()[0].data_type(), &DataType::UInt8, "BinaryArray can only be created from List<u8> arrays, mismatched data types.");
 
-        let mut builder = ArrayData::builder(DataType::Utf8)
-            .len(v.len())
-            .add_buffer(v.data().buffers()[0].clone())
-            .add_buffer(v.data().child_data()[0].buffers()[0].clone());
+        let mut builder = ArrayData::builder(DataType::Utf8).len(v.len()).add_buffer(v.data().buffers()[0].clone()).add_buffer(v.data().child_data()[0].buffers()[0].clone());
         if let Some(bitmap) = v.data().null_bitmap() {
-            builder = builder
-                .null_count(v.data().null_count())
-                .null_bit_buffer(bitmap.bits.clone())
+            builder = builder.null_count(v.data().null_count()).null_bit_buffer(bitmap.bits.clone())
         }
 
         let data = builder.build();
@@ -949,11 +829,7 @@ impl From<ArrayDataRef> for StructArray {
     fn from(data: ArrayDataRef) -> Self {
         let mut boxed_fields = vec![];
         for cd in data.child_data() {
-            let child_data = if data.offset != 0 || data.len != cd.len {
-                slice_data(cd.clone(), data.offset, data.len)
-            } else {
-                cd.clone()
-            };
+            let child_data = if data.offset != 0 || data.len != cd.len { slice_data(cd.clone(), data.offset, data.len) } else { cd.clone() };
             boxed_fields.push(make_array(child_data));
         }
         Self { data, boxed_fields }
@@ -986,17 +862,10 @@ impl From<Vec<(Field, ArrayRef)>> for StructArray {
         // Check the length of the child arrays
         let length = field_values[0].len();
         for i in 1..field_values.len() {
-            assert_eq!(
-                length,
-                field_values[i].len(),
-                "all child arrays of a StructArray must have the same length"
-            );
+            assert_eq!(length, field_values[i].len(), "all child arrays of a StructArray must have the same length");
         }
 
-        let data = ArrayData::builder(DataType::Struct(field_types))
-            .child_data(field_values.into_iter().map(|a| a.data()).collect())
-            .len(length)
-            .build();
+        let data = ArrayData::builder(DataType::Struct(field_types)).child_data(field_values.into_iter().map(|a| a.data()).collect()).len(length).build();
         Self::from(data)
     }
 }
@@ -1055,8 +924,7 @@ mod tests {
         // Test building a primitive array with null values
         // we use Int32 and Int64 as a backing array, so all Int32 and Int64 conventions
         // work
-        let arr: PrimitiveArray<Date64Type> =
-            vec![Some(1550902545147), None, Some(1550902545147)].into();
+        let arr: PrimitiveArray<Date64Type> = vec![Some(1550902545147), None, Some(1550902545147)].into();
         assert_eq!(3, arr.len());
         assert_eq!(0, arr.offset());
         assert_eq!(1, arr.null_count());
@@ -1066,10 +934,7 @@ mod tests {
                 assert!(arr.is_valid(i));
                 assert_eq!(1550902545147, arr.value(i));
                 // roundtrip to and from datetime
-                assert_eq!(
-                    1550902545147,
-                    arr.value_as_datetime(i).unwrap().timestamp_millis()
-                );
+                assert_eq!(1550902545147, arr.value_as_datetime(i).unwrap().timestamp_millis());
             } else {
                 assert!(arr.is_null(i));
                 assert!(!arr.is_valid(i));
@@ -1082,8 +947,7 @@ mod tests {
         // 1:        00:00:00.001
         // 37800005: 10:30:00.005
         // 86399210: 23:59:59.210
-        let arr: PrimitiveArray<Time32MillisecondType> =
-            vec![1, 37_800_005, 86_399_210].into();
+        let arr: PrimitiveArray<Time32MillisecondType> = vec![1, 37_800_005, 86_399_210].into();
         assert_eq!(3, arr.len());
         assert_eq!(0, arr.offset());
         assert_eq!(0, arr.null_count());
@@ -1106,8 +970,7 @@ mod tests {
         // 1e6:        00:00:00.001
         // 37800005e6: 10:30:00.005
         // 86399210e6: 23:59:59.210
-        let arr: PrimitiveArray<Time64NanosecondType> =
-            vec![1_000_000, 37_800_005_000_000, 86_399_210_000_000].into();
+        let arr: PrimitiveArray<Time64NanosecondType> = vec![1_000_000, 37_800_005_000_000, 86_399_210_000_000].into();
         assert_eq!(3, arr.len());
         assert_eq!(0, arr.offset());
         assert_eq!(0, arr.null_count());
@@ -1124,17 +987,7 @@ mod tests {
 
     #[test]
     fn test_primitive_array_slice() {
-        let arr = Int32Array::from(vec![
-            Some(0),
-            None,
-            Some(2),
-            None,
-            Some(4),
-            Some(5),
-            Some(6),
-            None,
-            None,
-        ]);
+        let arr = Int32Array::from(vec![Some(0), None, Some(2), None, Some(4), Some(5), Some(6), None, None]);
         assert_eq!(9, arr.len());
         assert_eq!(0, arr.offset());
         assert_eq!(4, arr.null_count());
@@ -1170,10 +1023,7 @@ mod tests {
     fn test_int32_fmt_debug() {
         let buf = Buffer::from(&[0, 1, 2, 3, 4].to_byte_slice());
         let arr = Int32Array::new(5, buf, 0, 0);
-        assert_eq!(
-            "PrimitiveArray<Int32>\n[\n  0,\n  1,\n  2,\n  3,\n  4,\n]",
-            format!("{:?}", arr)
-        );
+        assert_eq!("PrimitiveArray<Int32>\n[\n  0,\n  1,\n  2,\n  3,\n  4,\n]", format!("{:?}", arr));
     }
 
     #[test]
@@ -1183,20 +1033,14 @@ mod tests {
         builder.append_null().unwrap();
         builder.append_slice(&[3, 4]).unwrap();
         let arr = builder.finish();
-        assert_eq!(
-            "PrimitiveArray<Int32>\n[\n  0,\n  1,\n  null,\n  3,\n  4,\n]",
-            format!("{:?}", arr)
-        );
+        assert_eq!("PrimitiveArray<Int32>\n[\n  0,\n  1,\n  null,\n  3,\n  4,\n]", format!("{:?}", arr));
     }
 
     #[test]
     fn test_boolean_fmt_debug() {
         let buf = Buffer::from(&[true, false, false].to_byte_slice());
         let arr = BooleanArray::new(3, buf, 0, 0);
-        assert_eq!(
-            "PrimitiveArray<Boolean>\n[\n  true,\n  false,\n  false,\n]",
-            format!("{:?}", arr)
-        );
+        assert_eq!("PrimitiveArray<Boolean>\n[\n  true,\n  false,\n  false,\n]", format!("{:?}", arr));
     }
 
     #[test]
@@ -1206,38 +1050,25 @@ mod tests {
         builder.append_null().unwrap();
         builder.append_value(false).unwrap();
         let arr = builder.finish();
-        assert_eq!(
-            "PrimitiveArray<Boolean>\n[\n  true,\n  null,\n  false,\n]",
-            format!("{:?}", arr)
-        );
+        assert_eq!("PrimitiveArray<Boolean>\n[\n  true,\n  null,\n  false,\n]", format!("{:?}", arr));
     }
 
     #[test]
     fn test_timestamp_fmt_debug() {
-        let arr: PrimitiveArray<TimestampMillisecondType> =
-            vec![1546214400000, 1546214400000].into();
-        assert_eq!(
-            "PrimitiveArray<Timestamp(Millisecond)>\n[\n  2018-12-31T00:00:00,\n  2018-12-31T00:00:00,\n]",
-            format!("{:?}", arr)
-        );
+        let arr: PrimitiveArray<TimestampMillisecondType> = vec![1546214400000, 1546214400000].into();
+        assert_eq!("PrimitiveArray<Timestamp(Millisecond)>\n[\n  2018-12-31T00:00:00,\n  2018-12-31T00:00:00,\n]", format!("{:?}", arr));
     }
 
     #[test]
     fn test_date32_fmt_debug() {
         let arr: PrimitiveArray<Date32Type> = vec![12356, 13548].into();
-        assert_eq!(
-            "PrimitiveArray<Date32(Day)>\n[\n  2003-10-31,\n  2007-02-04,\n]",
-            format!("{:?}", arr)
-        );
+        assert_eq!("PrimitiveArray<Date32(Day)>\n[\n  2003-10-31,\n  2007-02-04,\n]", format!("{:?}", arr));
     }
 
     #[test]
     fn test_time32second_fmt_debug() {
         let arr: PrimitiveArray<Time32SecondType> = vec![7201, 60054].into();
-        assert_eq!(
-            "PrimitiveArray<Time32(Second)>\n[\n  02:00:01,\n  16:40:54,\n]",
-            format!("{:?}", arr)
-        );
+        assert_eq!("PrimitiveArray<Time32(Second)>\n[\n  02:00:01,\n  16:40:54,\n]", format!("{:?}", arr));
     }
 
     #[test]
@@ -1245,11 +1076,7 @@ mod tests {
         // Test building an primitive array with ArrayData builder and offset
         let buf = Buffer::from(&[0, 1, 2, 3, 4].to_byte_slice());
         let buf2 = buf.clone();
-        let data = ArrayData::builder(DataType::Int32)
-            .len(5)
-            .offset(2)
-            .add_buffer(buf)
-            .build();
+        let data = ArrayData::builder(DataType::Int32).len(5).offset(2).add_buffer(buf).build();
         let arr = Int32Array::from(data);
         assert_eq!(buf2, arr.values());
         assert_eq!(5, arr.len());
@@ -1325,11 +1152,7 @@ mod tests {
         // 000011011
         let buf = Buffer::from([27_u8]);
         let buf2 = buf.clone();
-        let data = ArrayData::builder(DataType::Boolean)
-            .len(5)
-            .offset(2)
-            .add_buffer(buf)
-            .build();
+        let data = ArrayData::builder(DataType::Boolean).len(5).offset(2).add_buffer(buf).build();
         let arr = BooleanArray::from(data);
         assert_eq!(buf2, arr.values());
         assert_eq!(5, arr.len());
@@ -1351,10 +1174,7 @@ mod tests {
     #[test]
     fn test_list_array() {
         // Construct a value array
-        let value_data = ArrayData::builder(DataType::Int32)
-            .len(8)
-            .add_buffer(Buffer::from(&[0, 1, 2, 3, 4, 5, 6, 7].to_byte_slice()))
-            .build();
+        let value_data = ArrayData::builder(DataType::Int32).len(8).add_buffer(Buffer::from(&[0, 1, 2, 3, 4, 5, 6, 7].to_byte_slice())).build();
 
         // Construct a buffer for value offsets, for the nested array:
         //  [[0, 1, 2], [3, 4, 5], [6, 7]]
@@ -1362,11 +1182,7 @@ mod tests {
 
         // Construct a list array from the above two
         let list_data_type = DataType::List(Box::new(DataType::Int32));
-        let list_data = ArrayData::builder(list_data_type.clone())
-            .len(3)
-            .add_buffer(value_offsets.clone())
-            .add_child_data(value_data.clone())
-            .build();
+        let list_data = ArrayData::builder(list_data_type.clone()).len(3).add_buffer(value_offsets.clone()).add_child_data(value_data.clone()).build();
         let list_array = ListArray::from(list_data);
 
         let values = list_array.values();
@@ -1382,12 +1198,7 @@ mod tests {
         }
 
         // Now test with a non-zero offset
-        let list_data = ArrayData::builder(list_data_type)
-            .len(3)
-            .offset(1)
-            .add_buffer(value_offsets)
-            .add_child_data(value_data.clone())
-            .build();
+        let list_data = ArrayData::builder(list_data_type).len(3).offset(1).add_buffer(value_offsets).add_child_data(value_data.clone()).build();
         let list_array = ListArray::from(list_data);
 
         let values = list_array.values();
@@ -1403,17 +1214,11 @@ mod tests {
 
     fn test_list_array_slice() {
         // Construct a value array
-        let value_data = ArrayData::builder(DataType::Int32)
-            .len(10)
-            .add_buffer(Buffer::from(
-                &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].to_byte_slice(),
-            ))
-            .build();
+        let value_data = ArrayData::builder(DataType::Int32).len(10).add_buffer(Buffer::from(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].to_byte_slice())).build();
 
         // Construct a buffer for value offsets, for the nested array:
         //  [[0, 1], null, null, [2, 3], [4, 5], null, [6, 7, 8], null, [9]]
-        let value_offsets =
-            Buffer::from(&[0, 2, 2, 2, 4, 6, 6, 9, 9, 10].to_byte_slice());
+        let value_offsets = Buffer::from(&[0, 2, 2, 2, 4, 6, 6, 9, 9, 10].to_byte_slice());
         // 01011001 00000001
         let mut null_bits: [u8; 2] = [0; 2];
         bit_util::set_bit(&mut null_bits, 0);
@@ -1424,12 +1229,7 @@ mod tests {
 
         // Construct a list array from the above two
         let list_data_type = DataType::List(Box::new(DataType::Int32));
-        let list_data = ArrayData::builder(list_data_type.clone())
-            .len(9)
-            .add_buffer(value_offsets.clone())
-            .add_child_data(value_data.clone())
-            .null_bit_buffer(Buffer::from(null_bits))
-            .build();
+        let list_data = ArrayData::builder(list_data_type.clone()).len(9).add_buffer(value_offsets.clone()).add_child_data(value_data.clone()).null_bit_buffer(Buffer::from(null_bits)).build();
         let list_array = ListArray::from(list_data);
 
         let values = list_array.values();
@@ -1454,8 +1254,7 @@ mod tests {
         }
 
         // Check offset and length for each non-null value.
-        let sliced_list_array =
-            sliced_array.as_any().downcast_ref::<ListArray>().unwrap();
+        let sliced_list_array = sliced_array.as_any().downcast_ref::<ListArray>().unwrap();
         assert_eq!(2, sliced_list_array.value_offset(2));
         assert_eq!(2, sliced_list_array.value_length(2));
         assert_eq!(4, sliced_list_array.value_offset(3));
@@ -1465,68 +1264,42 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "ListArray data should contain a single buffer only (value offsets)"
-    )]
+    #[should_panic(expected = "ListArray data should contain a single buffer only (value offsets)")]
     fn test_list_array_invalid_buffer_len() {
-        let value_data = ArrayData::builder(DataType::Int32)
-            .len(8)
-            .add_buffer(Buffer::from(&[0, 1, 2, 3, 4, 5, 6, 7].to_byte_slice()))
-            .build();
+        let value_data = ArrayData::builder(DataType::Int32).len(8).add_buffer(Buffer::from(&[0, 1, 2, 3, 4, 5, 6, 7].to_byte_slice())).build();
         let list_data_type = DataType::List(Box::new(DataType::Int32));
-        let list_data = ArrayData::builder(list_data_type)
-            .len(3)
-            .add_child_data(value_data)
-            .build();
+        let list_data = ArrayData::builder(list_data_type).len(3).add_child_data(value_data).build();
         ListArray::from(list_data);
     }
 
     #[test]
-    #[should_panic(
-        expected = "ListArray should contain a single child array (values array)"
-    )]
+    #[should_panic(expected = "ListArray should contain a single child array (values array)")]
     fn test_list_array_invalid_child_array_len() {
         let value_offsets = Buffer::from(&[0, 2, 5, 7].to_byte_slice());
         let list_data_type = DataType::List(Box::new(DataType::Int32));
-        let list_data = ArrayData::builder(list_data_type)
-            .len(3)
-            .add_buffer(value_offsets)
-            .build();
+        let list_data = ArrayData::builder(list_data_type).len(3).add_buffer(value_offsets).build();
         ListArray::from(list_data);
     }
 
     #[test]
     #[should_panic(expected = "offsets do not start at zero")]
     fn test_list_array_invalid_value_offset_start() {
-        let value_data = ArrayData::builder(DataType::Int32)
-            .len(8)
-            .add_buffer(Buffer::from(&[0, 1, 2, 3, 4, 5, 6, 7].to_byte_slice()))
-            .build();
+        let value_data = ArrayData::builder(DataType::Int32).len(8).add_buffer(Buffer::from(&[0, 1, 2, 3, 4, 5, 6, 7].to_byte_slice())).build();
 
         let value_offsets = Buffer::from(&[2, 2, 5, 7].to_byte_slice());
 
         let list_data_type = DataType::List(Box::new(DataType::Int32));
-        let list_data = ArrayData::builder(list_data_type.clone())
-            .len(3)
-            .add_buffer(value_offsets.clone())
-            .add_child_data(value_data.clone())
-            .build();
+        let list_data = ArrayData::builder(list_data_type.clone()).len(3).add_buffer(value_offsets.clone()).add_child_data(value_data.clone()).build();
         ListArray::from(list_data);
     }
 
     #[test]
     fn test_binary_array() {
-        let values: [u8; 12] = [
-            b'h', b'e', b'l', b'l', b'o', b'p', b'a', b'r', b'q', b'u', b'e', b't',
-        ];
+        let values: [u8; 12] = [b'h', b'e', b'l', b'l', b'o', b'p', b'a', b'r', b'q', b'u', b'e', b't'];
         let offsets: [i32; 4] = [0, 5, 5, 12];
 
         // Array data: ["hello", "", "parquet"]
-        let array_data = ArrayData::builder(DataType::Utf8)
-            .len(3)
-            .add_buffer(Buffer::from(offsets.to_byte_slice()))
-            .add_buffer(Buffer::from(&values[..]))
-            .build();
+        let array_data = ArrayData::builder(DataType::Utf8).len(3).add_buffer(Buffer::from(offsets.to_byte_slice())).add_buffer(Buffer::from(&values[..])).build();
         let binary_array = BinaryArray::from(array_data);
         assert_eq!(3, binary_array.len());
         assert_eq!(0, binary_array.null_count());
@@ -1534,10 +1307,7 @@ mod tests {
         assert_eq!("hello", binary_array.get_string(0));
         assert_eq!([] as [u8; 0], binary_array.value(1));
         assert_eq!("", binary_array.get_string(1));
-        assert_eq!(
-            [b'p', b'a', b'r', b'q', b'u', b'e', b't'],
-            binary_array.value(2)
-        );
+        assert_eq!([b'p', b'a', b'r', b'q', b'u', b'e', b't'], binary_array.value(2));
         assert_eq!("parquet", binary_array.get_string(2));
         assert_eq!(5, binary_array.value_offset(2));
         assert_eq!(7, binary_array.value_length(2));
@@ -1547,17 +1317,9 @@ mod tests {
         }
 
         // Test binary array with offset
-        let array_data = ArrayData::builder(DataType::Utf8)
-            .len(4)
-            .offset(1)
-            .add_buffer(Buffer::from(offsets.to_byte_slice()))
-            .add_buffer(Buffer::from(&values[..]))
-            .build();
+        let array_data = ArrayData::builder(DataType::Utf8).len(4).offset(1).add_buffer(Buffer::from(offsets.to_byte_slice())).add_buffer(Buffer::from(&values[..])).build();
         let binary_array = BinaryArray::from(array_data);
-        assert_eq!(
-            [b'p', b'a', b'r', b'q', b'u', b'e', b't'],
-            binary_array.value(1)
-        );
+        assert_eq!([b'p', b'a', b'r', b'q', b'u', b'e', b't'], binary_array.value(1));
         assert_eq!("parquet", binary_array.get_string(1));
         assert_eq!(5, binary_array.value_offset(0));
         assert_eq!(0, binary_array.value_length(0));
@@ -1567,28 +1329,15 @@ mod tests {
 
     #[test]
     fn test_binary_array_from_list_array() {
-        let values: [u8; 12] = [
-            b'h', b'e', b'l', b'l', b'o', b'p', b'a', b'r', b'q', b'u', b'e', b't',
-        ];
-        let values_data = ArrayData::builder(DataType::UInt8)
-            .len(12)
-            .add_buffer(Buffer::from(&values[..]))
-            .build();
+        let values: [u8; 12] = [b'h', b'e', b'l', b'l', b'o', b'p', b'a', b'r', b'q', b'u', b'e', b't'];
+        let values_data = ArrayData::builder(DataType::UInt8).len(12).add_buffer(Buffer::from(&values[..])).build();
         let offsets: [i32; 4] = [0, 5, 5, 12];
 
         // Array data: ["hello", "", "parquet"]
-        let array_data1 = ArrayData::builder(DataType::Utf8)
-            .len(3)
-            .add_buffer(Buffer::from(offsets.to_byte_slice()))
-            .add_buffer(Buffer::from(&values[..]))
-            .build();
+        let array_data1 = ArrayData::builder(DataType::Utf8).len(3).add_buffer(Buffer::from(offsets.to_byte_slice())).add_buffer(Buffer::from(&values[..])).build();
         let binary_array1 = BinaryArray::from(array_data1);
 
-        let array_data2 = ArrayData::builder(DataType::Utf8)
-            .len(3)
-            .add_buffer(Buffer::from(offsets.to_byte_slice()))
-            .add_child_data(values_data)
-            .build();
+        let array_data2 = ArrayData::builder(DataType::Utf8).len(3).add_buffer(Buffer::from(offsets.to_byte_slice())).add_child_data(values_data).build();
         let list_array = ListArray::from(array_data2);
         let binary_array2 = BinaryArray::from(list_array);
 
@@ -1607,11 +1356,7 @@ mod tests {
 
     #[test]
     fn test_binary_array_from_u8_slice() {
-        let values: Vec<&[u8]> = vec![
-            &[b'h', b'e', b'l', b'l', b'o'],
-            &[],
-            &[b'p', b'a', b'r', b'q', b'u', b'e', b't'],
-        ];
+        let values: Vec<&[u8]> = vec![&[b'h', b'e', b'l', b'l', b'o'], &[], &[b'p', b'a', b'r', b'q', b'u', b'e', b't']];
 
         // Array data: ["hello", "", "parquet"]
         let binary_array = BinaryArray::from(values);
@@ -1622,10 +1367,7 @@ mod tests {
         assert_eq!("hello", binary_array.get_string(0));
         assert_eq!([] as [u8; 0], binary_array.value(1));
         assert_eq!("", binary_array.get_string(1));
-        assert_eq!(
-            [b'p', b'a', b'r', b'q', b'u', b'e', b't'],
-            binary_array.value(2)
-        );
+        assert_eq!([b'p', b'a', b'r', b'q', b'u', b'e', b't'], binary_array.value(2));
         assert_eq!("parquet", binary_array.get_string(2));
         assert_eq!(5, binary_array.value_offset(2));
         assert_eq!(7, binary_array.value_length(2));
@@ -1636,46 +1378,27 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "BinaryArray can only be created from List<u8> arrays, mismatched \
-                    data types."
-    )]
+    #[should_panic(expected = "BinaryArray can only be created from List<u8> arrays, mismatched \
+                               data types.")]
     fn test_binary_array_from_incorrect_list_array_type() {
         let values: [u32; 12] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-        let values_data = ArrayData::builder(DataType::UInt32)
-            .len(12)
-            .add_buffer(Buffer::from(values[..].to_byte_slice()))
-            .build();
+        let values_data = ArrayData::builder(DataType::UInt32).len(12).add_buffer(Buffer::from(values[..].to_byte_slice())).build();
         let offsets: [i32; 4] = [0, 5, 5, 12];
 
-        let array_data = ArrayData::builder(DataType::Utf8)
-            .len(3)
-            .add_buffer(Buffer::from(offsets.to_byte_slice()))
-            .add_child_data(values_data)
-            .build();
+        let array_data = ArrayData::builder(DataType::Utf8).len(3).add_buffer(Buffer::from(offsets.to_byte_slice())).add_child_data(values_data).build();
         let list_array = ListArray::from(array_data);
         BinaryArray::from(list_array);
     }
 
     #[test]
-    #[should_panic(
-        expected = "BinaryArray can only be created from list array of u8 values \
-                    (i.e. List<PrimitiveArray<u8>>)."
-    )]
+    #[should_panic(expected = "BinaryArray can only be created from list array of u8 values \
+                               (i.e. List<PrimitiveArray<u8>>).")]
     fn test_binary_array_from_incorrect_list_array() {
         let values: [u32; 12] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-        let values_data = ArrayData::builder(DataType::UInt32)
-            .len(12)
-            .add_buffer(Buffer::from(values[..].to_byte_slice()))
-            .add_child_data(ArrayData::builder(DataType::Boolean).build())
-            .build();
+        let values_data = ArrayData::builder(DataType::UInt32).len(12).add_buffer(Buffer::from(values[..].to_byte_slice())).add_child_data(ArrayData::builder(DataType::Boolean).build()).build();
         let offsets: [i32; 4] = [0, 5, 5, 12];
 
-        let array_data = ArrayData::builder(DataType::Utf8)
-            .len(3)
-            .add_buffer(Buffer::from(offsets.to_byte_slice()))
-            .add_child_data(values_data)
-            .build();
+        let array_data = ArrayData::builder(DataType::Utf8).len(3).add_buffer(Buffer::from(offsets.to_byte_slice())).add_child_data(values_data).build();
         let list_array = ListArray::from(array_data);
         BinaryArray::from(list_array);
     }
@@ -1683,37 +1406,21 @@ mod tests {
     #[test]
     #[should_panic(expected = "BinaryArray out of bounds access")]
     fn test_binary_array_get_value_index_out_of_bound() {
-        let values: [u8; 12] = [
-            b'h', b'e', b'l', b'l', b'o', b'p', b'a', b'r', b'q', b'u', b'e', b't',
-        ];
+        let values: [u8; 12] = [b'h', b'e', b'l', b'l', b'o', b'p', b'a', b'r', b'q', b'u', b'e', b't'];
         let offsets: [i32; 4] = [0, 5, 5, 12];
-        let array_data = ArrayData::builder(DataType::Utf8)
-            .len(3)
-            .add_buffer(Buffer::from(offsets.to_byte_slice()))
-            .add_buffer(Buffer::from(&values[..]))
-            .build();
+        let array_data = ArrayData::builder(DataType::Utf8).len(3).add_buffer(Buffer::from(offsets.to_byte_slice())).add_buffer(Buffer::from(&values[..])).build();
         let binary_array = BinaryArray::from(array_data);
         binary_array.value(4);
     }
 
     #[test]
     fn test_struct_array_builder() {
-        let boolean_data = ArrayData::builder(DataType::Boolean)
-            .len(4)
-            .add_buffer(Buffer::from([false, false, true, true].to_byte_slice()))
-            .build();
-        let int_data = ArrayData::builder(DataType::Int64)
-            .len(4)
-            .add_buffer(Buffer::from([42, 28, 19, 31].to_byte_slice()))
-            .build();
+        let boolean_data = ArrayData::builder(DataType::Boolean).len(4).add_buffer(Buffer::from([false, false, true, true].to_byte_slice())).build();
+        let int_data = ArrayData::builder(DataType::Int64).len(4).add_buffer(Buffer::from([42, 28, 19, 31].to_byte_slice())).build();
         let mut field_types = vec![];
         field_types.push(Field::new("a", DataType::Boolean, false));
         field_types.push(Field::new("b", DataType::Int64, false));
-        let struct_array_data = ArrayData::builder(DataType::Struct(field_types))
-            .len(4)
-            .add_child_data(boolean_data.clone())
-            .add_child_data(int_data.clone())
-            .build();
+        let struct_array_data = ArrayData::builder(DataType::Struct(field_types)).len(4).add_child_data(boolean_data.clone()).add_child_data(int_data.clone()).build();
         let struct_array = StructArray::from(struct_array_data);
 
         assert_eq!(boolean_data, struct_array.column(0).data());
@@ -1722,24 +1429,11 @@ mod tests {
 
     #[test]
     fn test_struct_array_from() {
-        let boolean_data = ArrayData::builder(DataType::Boolean)
-            .len(4)
-            .add_buffer(Buffer::from([12_u8]))
-            .build();
-        let int_data = ArrayData::builder(DataType::Int32)
-            .len(4)
-            .add_buffer(Buffer::from([42, 28, 19, 31].to_byte_slice()))
-            .build();
+        let boolean_data = ArrayData::builder(DataType::Boolean).len(4).add_buffer(Buffer::from([12_u8])).build();
+        let int_data = ArrayData::builder(DataType::Int32).len(4).add_buffer(Buffer::from([42, 28, 19, 31].to_byte_slice())).build();
         let struct_array = StructArray::from(vec![
-            (
-                Field::new("b", DataType::Boolean, false),
-                Arc::new(BooleanArray::from(vec![false, false, true, true]))
-                    as Arc<Array>,
-            ),
-            (
-                Field::new("c", DataType::Int32, false),
-                Arc::new(Int32Array::from(vec![42, 28, 19, 31])),
-            ),
+            (Field::new("b", DataType::Boolean, false), Arc::new(BooleanArray::from(vec![false, false, true, true])) as Arc<Array>),
+            (Field::new("c", DataType::Int32, false), Arc::new(Int32Array::from(vec![42, 28, 19, 31]))),
         ]);
         assert_eq!(boolean_data, struct_array.column(0).data());
         assert_eq!(int_data, struct_array.column(1).data());
@@ -1750,26 +1444,13 @@ mod tests {
 
     #[test]
     fn test_struct_array_slice() {
-        let boolean_data = ArrayData::builder(DataType::Boolean)
-            .len(5)
-            .add_buffer(Buffer::from([0b00010000]))
-            .null_bit_buffer(Buffer::from([0b00010001]))
-            .build();
-        let int_data = ArrayData::builder(DataType::Int32)
-            .len(5)
-            .add_buffer(Buffer::from([0, 28, 42, 0, 0].to_byte_slice()))
-            .null_bit_buffer(Buffer::from([0b00000110]))
-            .build();
+        let boolean_data = ArrayData::builder(DataType::Boolean).len(5).add_buffer(Buffer::from([0b00010000])).null_bit_buffer(Buffer::from([0b00010001])).build();
+        let int_data = ArrayData::builder(DataType::Int32).len(5).add_buffer(Buffer::from([0, 28, 42, 0, 0].to_byte_slice())).null_bit_buffer(Buffer::from([0b00000110])).build();
 
         let mut field_types = vec![];
         field_types.push(Field::new("a", DataType::Boolean, false));
         field_types.push(Field::new("b", DataType::Int32, false));
-        let struct_array_data = ArrayData::builder(DataType::Struct(field_types))
-            .len(5)
-            .add_child_data(boolean_data.clone())
-            .add_child_data(int_data.clone())
-            .null_bit_buffer(Buffer::from([0b00010111]))
-            .build();
+        let struct_array_data = ArrayData::builder(DataType::Struct(field_types)).len(5).add_child_data(boolean_data.clone()).add_child_data(int_data.clone()).null_bit_buffer(Buffer::from([0b00010111])).build();
         let struct_array = StructArray::from(struct_array_data);
 
         assert_eq!(5, struct_array.len());
@@ -1835,19 +1516,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "all child arrays of a StructArray must have the same length"
-    )]
+    #[should_panic(expected = "all child arrays of a StructArray must have the same length")]
     fn test_invalid_struct_child_array_lengths() {
         StructArray::from(vec![
-            (
-                Field::new("b", DataType::Float32, false),
-                Arc::new(Float32Array::from(vec![1.1])) as Arc<Array>,
-            ),
-            (
-                Field::new("c", DataType::Float64, false),
-                Arc::new(Float64Array::from(vec![2.2, 3.3])),
-            ),
+            (Field::new("b", DataType::Float32, false), Arc::new(Float32Array::from(vec![1.1])) as Arc<Array>),
+            (Field::new("c", DataType::Float64, false), Arc::new(Float64Array::from(vec![2.2, 3.3]))),
         ]);
     }
 
@@ -1869,15 +1542,10 @@ mod tests {
         let buf2 = buf.slice(1);
 
         let values: [i32; 8] = [0; 8];
-        let value_data = ArrayData::builder(DataType::Int32)
-            .add_buffer(Buffer::from(values.to_byte_slice()))
-            .build();
+        let value_data = ArrayData::builder(DataType::Int32).add_buffer(Buffer::from(values.to_byte_slice())).build();
 
         let list_data_type = DataType::List(Box::new(DataType::Int32));
-        let list_data = ArrayData::builder(list_data_type.clone())
-            .add_buffer(buf2)
-            .add_child_data(value_data.clone())
-            .build();
+        let list_data = ArrayData::builder(list_data_type.clone()).add_buffer(buf2).add_child_data(value_data.clone()).build();
         ListArray::from(list_data);
     }
 
@@ -1890,10 +1558,7 @@ mod tests {
 
         let values: [u8; 12] = [0; 12];
 
-        let array_data = ArrayData::builder(DataType::Utf8)
-            .add_buffer(buf2)
-            .add_buffer(Buffer::from(&values[..]))
-            .build();
+        let array_data = ArrayData::builder(DataType::Utf8).add_buffer(buf2).add_buffer(Buffer::from(&values[..])).build();
         BinaryArray::from(array_data);
     }
 

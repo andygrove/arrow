@@ -36,48 +36,25 @@ pub struct TypeCoercionRule {}
 impl OptimizerRule for TypeCoercionRule {
     fn optimize(&mut self, plan: &LogicalPlan) -> Result<Arc<LogicalPlan>> {
         match plan {
-            LogicalPlan::Projection {
-                expr,
-                input,
-                schema,
-            } => Ok(Arc::new(LogicalPlan::Projection {
-                expr: expr
-                    .iter()
-                    .map(|e| rewrite_expr(e, &schema))
-                    .collect::<Result<Vec<_>>>()?,
+            LogicalPlan::Projection { expr, input, schema } => Ok(Arc::new(LogicalPlan::Projection {
+                expr: expr.iter().map(|e| rewrite_expr(e, &schema)).collect::<Result<Vec<_>>>()?,
                 input: self.optimize(input)?,
                 schema: schema.clone(),
             })),
-            LogicalPlan::Selection { expr, input } => {
-                Ok(Arc::new(LogicalPlan::Selection {
-                    expr: rewrite_expr(expr, input.schema())?,
-                    input: self.optimize(input)?,
-                }))
-            }
-            LogicalPlan::Aggregate {
-                input,
-                group_expr,
-                aggr_expr,
-                schema,
-            } => Ok(Arc::new(LogicalPlan::Aggregate {
-                group_expr: group_expr
-                    .iter()
-                    .map(|e| rewrite_expr(e, &schema))
-                    .collect::<Result<Vec<_>>>()?,
-                aggr_expr: aggr_expr
-                    .iter()
-                    .map(|e| rewrite_expr(e, &schema))
-                    .collect::<Result<Vec<_>>>()?,
+            LogicalPlan::Selection { expr, input } => Ok(Arc::new(LogicalPlan::Selection {
+                expr: rewrite_expr(expr, input.schema())?,
+                input: self.optimize(input)?,
+            })),
+            LogicalPlan::Aggregate { input, group_expr, aggr_expr, schema } => Ok(Arc::new(LogicalPlan::Aggregate {
+                group_expr: group_expr.iter().map(|e| rewrite_expr(e, &schema)).collect::<Result<Vec<_>>>()?,
+                aggr_expr: aggr_expr.iter().map(|e| rewrite_expr(e, &schema)).collect::<Result<Vec<_>>>()?,
                 input: self.optimize(input)?,
                 schema: schema.clone(),
             })),
             LogicalPlan::TableScan { .. } => Ok(Arc::new(plan.clone())),
             LogicalPlan::EmptyRelation { .. } => Ok(Arc::new(plan.clone())),
             LogicalPlan::Limit { .. } => Ok(Arc::new(plan.clone())),
-            other => Err(ExecutionError::NotImplemented(format!(
-                "Type coercion optimizer rule does not support relation: {:?}",
-                other
-            ))),
+            other => Err(ExecutionError::NotImplemented(format!("Type coercion optimizer rule does not support relation: {:?}", other))),
         }
     }
 }
@@ -110,37 +87,20 @@ fn rewrite_expr(expr: &Expr, schema: &Schema) -> Result<Expr> {
         }
         Expr::IsNull(e) => Ok(Expr::IsNull(Arc::new(rewrite_expr(e, schema)?))),
         Expr::IsNotNull(e) => Ok(Expr::IsNotNull(Arc::new(rewrite_expr(e, schema)?))),
-        Expr::ScalarFunction {
-            name,
-            args,
-            return_type,
-        } => Ok(Expr::ScalarFunction {
+        Expr::ScalarFunction { name, args, return_type } => Ok(Expr::ScalarFunction {
             name: name.clone(),
-            args: args
-                .iter()
-                .map(|a| rewrite_expr(a, schema))
-                .collect::<Result<Vec<_>>>()?,
+            args: args.iter().map(|a| rewrite_expr(a, schema)).collect::<Result<Vec<_>>>()?,
             return_type: return_type.clone(),
         }),
-        Expr::AggregateFunction {
-            name,
-            args,
-            return_type,
-        } => Ok(Expr::AggregateFunction {
+        Expr::AggregateFunction { name, args, return_type } => Ok(Expr::AggregateFunction {
             name: name.clone(),
-            args: args
-                .iter()
-                .map(|a| rewrite_expr(a, schema))
-                .collect::<Result<Vec<_>>>()?,
+            args: args.iter().map(|a| rewrite_expr(a, schema)).collect::<Result<Vec<_>>>()?,
             return_type: return_type.clone(),
         }),
         Expr::Cast { .. } => Ok(expr.clone()),
         Expr::Column(_) => Ok(expr.clone()),
         Expr::Literal(_) => Ok(expr.clone()),
-        other => Err(ExecutionError::NotImplemented(format!(
-            "Type coercion optimizer rule does not support expression: {:?}",
-            other
-        ))),
+        other => Err(ExecutionError::NotImplemented(format!("Type coercion optimizer rule does not support expression: {:?}", other))),
     }
 }
 
@@ -153,51 +113,24 @@ mod tests {
 
     #[test]
     fn test_add_i32_i64() {
-        binary_cast_test(
-            DataType::Int32,
-            DataType::Int64,
-            "CAST(#0 AS Int64) Plus #1",
-        );
-        binary_cast_test(
-            DataType::Int64,
-            DataType::Int32,
-            "#0 Plus CAST(#1 AS Int64)",
-        );
+        binary_cast_test(DataType::Int32, DataType::Int64, "CAST(#0 AS Int64) Plus #1");
+        binary_cast_test(DataType::Int64, DataType::Int32, "#0 Plus CAST(#1 AS Int64)");
     }
 
     #[test]
     fn test_add_f32_f64() {
-        binary_cast_test(
-            DataType::Float32,
-            DataType::Float64,
-            "CAST(#0 AS Float64) Plus #1",
-        );
-        binary_cast_test(
-            DataType::Float64,
-            DataType::Float32,
-            "#0 Plus CAST(#1 AS Float64)",
-        );
+        binary_cast_test(DataType::Float32, DataType::Float64, "CAST(#0 AS Float64) Plus #1");
+        binary_cast_test(DataType::Float64, DataType::Float32, "#0 Plus CAST(#1 AS Float64)");
     }
 
     #[test]
     fn test_add_i32_f32() {
-        binary_cast_test(
-            DataType::Int32,
-            DataType::Float32,
-            "CAST(#0 AS Float32) Plus #1",
-        );
-        binary_cast_test(
-            DataType::Float32,
-            DataType::Int32,
-            "#0 Plus CAST(#1 AS Float32)",
-        );
+        binary_cast_test(DataType::Int32, DataType::Float32, "CAST(#0 AS Float32) Plus #1");
+        binary_cast_test(DataType::Float32, DataType::Int32, "#0 Plus CAST(#1 AS Float32)");
     }
 
     fn binary_cast_test(left_type: DataType, right_type: DataType, expected: &str) {
-        let schema = Schema::new(vec![
-            Field::new("c0", left_type, true),
-            Field::new("c1", right_type, true),
-        ]);
+        let schema = Schema::new(vec![Field::new("c0", left_type, true), Field::new("c1", right_type, true)]);
 
         let expr = Expr::BinaryExpr {
             left: Arc::new(Column(0)),

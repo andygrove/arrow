@@ -49,18 +49,8 @@ pub struct FunctionMeta {
 
 impl FunctionMeta {
     #[allow(missing_docs)]
-    pub fn new(
-        name: String,
-        args: Vec<Field>,
-        return_type: DataType,
-        function_type: FunctionType,
-    ) -> Self {
-        FunctionMeta {
-            name,
-            args,
-            return_type,
-            function_type,
-        }
+    pub fn new(name: String, args: Vec<Field>, return_type: DataType, function_type: FunctionType) -> Self {
+        FunctionMeta { name, args, return_type, function_type }
     }
     /// Getter for the function name
     pub fn name(&self) -> &String {
@@ -236,11 +226,7 @@ impl Expr {
             Expr::AggregateFunction { return_type, .. } => return_type.clone(),
             Expr::IsNull(_) => DataType::Boolean,
             Expr::IsNotNull(_) => DataType::Boolean,
-            Expr::BinaryExpr {
-                ref left,
-                ref right,
-                ref op,
-            } => match op {
+            Expr::BinaryExpr { ref left, ref right, ref op } => match op {
                 Operator::Eq | Operator::NotEq => DataType::Boolean,
                 Operator::Lt | Operator::LtEq => DataType::Boolean,
                 Operator::Gt | Operator::GtEq => DataType::Boolean,
@@ -268,10 +254,7 @@ impl Expr {
                 data_type: cast_to_type.clone(),
             })
         } else {
-            Err(ExecutionError::General(format!(
-                "Cannot automatically convert {:?} to {:?}",
-                this_type, cast_to_type
-            )))
+            Err(ExecutionError::General(format!("Cannot automatically convert {:?} to {:?}", this_type, cast_to_type)))
         }
     }
 
@@ -335,14 +318,10 @@ impl fmt::Debug for Expr {
         match self {
             Expr::Column(i) => write!(f, "#{}", i),
             Expr::Literal(v) => write!(f, "{:?}", v),
-            Expr::Cast { expr, data_type } => {
-                write!(f, "CAST({:?} AS {:?})", expr, data_type)
-            }
+            Expr::Cast { expr, data_type } => write!(f, "CAST({:?} AS {:?})", expr, data_type),
             Expr::IsNull(expr) => write!(f, "{:?} IS NULL", expr),
             Expr::IsNotNull(expr) => write!(f, "{:?} IS NOT NULL", expr),
-            Expr::BinaryExpr { left, op, right } => {
-                write!(f, "{:?} {:?} {:?}", left, op, right)
-            }
+            Expr::BinaryExpr { left, op, right } => write!(f, "{:?} {:?} {:?}", left, op, right),
             Expr::Sort { expr, asc } => {
                 if *asc {
                     write!(f, "{:?} ASC", expr)
@@ -468,16 +447,8 @@ impl LogicalPlan {
         }
         match *self {
             LogicalPlan::EmptyRelation { .. } => write!(f, "EmptyRelation"),
-            LogicalPlan::TableScan {
-                ref table_name,
-                ref projection,
-                ..
-            } => write!(f, "TableScan: {} projection={:?}", table_name, projection),
-            LogicalPlan::Projection {
-                ref expr,
-                ref input,
-                ..
-            } => {
+            LogicalPlan::TableScan { ref table_name, ref projection, .. } => write!(f, "TableScan: {} projection={:?}", table_name, projection),
+            LogicalPlan::Projection { ref expr, ref input, .. } => {
                 write!(f, "Projection: ")?;
                 for i in 0..expr.len() {
                     if i > 0 {
@@ -487,32 +458,15 @@ impl LogicalPlan {
                 }
                 input.fmt_with_indent(f, indent + 1)
             }
-            LogicalPlan::Selection {
-                ref expr,
-                ref input,
-                ..
-            } => {
+            LogicalPlan::Selection { ref expr, ref input, .. } => {
                 write!(f, "Selection: {:?}", expr)?;
                 input.fmt_with_indent(f, indent + 1)
             }
-            LogicalPlan::Aggregate {
-                ref input,
-                ref group_expr,
-                ref aggr_expr,
-                ..
-            } => {
-                write!(
-                    f,
-                    "Aggregate: groupBy=[{:?}], aggr=[{:?}]",
-                    group_expr, aggr_expr
-                )?;
+            LogicalPlan::Aggregate { ref input, ref group_expr, ref aggr_expr, .. } => {
+                write!(f, "Aggregate: groupBy=[{:?}], aggr=[{:?}]", group_expr, aggr_expr)?;
                 input.fmt_with_indent(f, indent + 1)
             }
-            LogicalPlan::Sort {
-                ref input,
-                ref expr,
-                ..
-            } => {
+            LogicalPlan::Sort { ref input, ref expr, .. } => {
                 write!(f, "Sort: ")?;
                 for i in 0..expr.len() {
                     if i > 0 {
@@ -522,11 +476,7 @@ impl LogicalPlan {
                 }
                 input.fmt_with_indent(f, indent + 1)
             }
-            LogicalPlan::Limit {
-                ref input,
-                ref expr,
-                ..
-            } => {
+            LogicalPlan::Limit { ref input, ref expr, .. } => {
                 write!(f, "Limit: {:?}", expr)?;
                 input.fmt_with_indent(f, indent + 1)
             }
@@ -621,14 +571,7 @@ mod tests {
         let schema = Schema::new(vec![
             Field::new("first_name", DataType::Utf8, false),
             Field::new("last_name", DataType::Utf8, false),
-            Field::new(
-                "address",
-                DataType::Struct(vec![
-                    Field::new("street", DataType::Utf8, false),
-                    Field::new("zip", DataType::UInt16, false),
-                ]),
-                false,
-            ),
+            Field::new("address", DataType::Struct(vec![Field::new("street", DataType::Utf8, false), Field::new("zip", DataType::UInt16, false)]), false),
         ]);
 
         let plan = LogicalPlan::TableScan {

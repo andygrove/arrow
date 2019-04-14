@@ -34,11 +34,7 @@ pub trait TableProvider {
     fn schema(&self) -> &Arc<Schema>;
 
     /// Perform a scan of a table and return a sequence of iterators over the data (one iterator per partition)
-    fn scan(
-        &self,
-        projection: &Option<Vec<usize>>,
-        batch_size: usize,
-    ) -> Result<Vec<ScanResult>>;
+    fn scan(&self, projection: &Option<Vec<usize>>, batch_size: usize) -> Result<Vec<ScanResult>>;
 }
 
 /// Iterator for reading a series of record batches with a known schema

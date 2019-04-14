@@ -48,10 +48,7 @@ pub fn get_temp_file(file_name: &str, content: &[u8]) -> fs::File {
     tmp_file.sync_all().unwrap();
 
     // return file handle for both read and write
-    let file = fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path_buf.as_path());
+    let file = fs::OpenOptions::new().read(true).write(true).open(path_buf.as_path());
     assert!(file.is_ok());
     file.unwrap()
 }

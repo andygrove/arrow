@@ -20,11 +20,7 @@
 use std::ops::Add;
 use std::sync::Arc;
 
-use crate::array::{
-    Array, ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array, Int16Array,
-    Int32Array, Int64Array, Int8Array, PrimitiveArray, UInt16Array, UInt32Array,
-    UInt64Array, UInt8Array,
-};
+use crate::array::{Array, ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array, Int8Array, PrimitiveArray, UInt16Array, UInt32Array, UInt64Array, UInt8Array};
 use crate::datatypes::{ArrowNumericType, DataType};
 use crate::error::{ArrowError, Result};
 
@@ -104,33 +100,19 @@ where
 }
 
 /// Helper function to perform boolean lambda function on values from two arrays.
-fn bool_op<T, F>(
-    left: &PrimitiveArray<T>,
-    right: &PrimitiveArray<T>,
-    op: F,
-) -> Result<BooleanArray>
+fn bool_op<T, F>(left: &PrimitiveArray<T>, right: &PrimitiveArray<T>, op: F) -> Result<BooleanArray>
 where
     T: ArrowNumericType,
     F: Fn(Option<T::Native>, Option<T::Native>) -> bool,
 {
     if left.len() != right.len() {
-        return Err(ArrowError::ComputeError(
-            "Cannot perform math operation on arrays of different length".to_string(),
-        ));
+        return Err(ArrowError::ComputeError("Cannot perform math operation on arrays of different length".to_string()));
     }
     let mut b = BooleanArray::builder(left.len());
     for i in 0..left.len() {
         let index = i;
-        let l = if left.is_null(i) {
-            None
-        } else {
-            Some(left.value(index))
-        };
-        let r = if right.is_null(i) {
-            None
-        } else {
-            Some(right.value(index))
-        };
+        let l = if left.is_null(i) { None } else { Some(left.value(index)) };
+        let r = if right.is_null(i) { None } else { Some(right.value(index)) };
         b.append_value(op(l, r))?;
     }
     Ok(b.finish())
@@ -177,10 +159,7 @@ pub fn filter(array: &Array, filter: &BooleanArray) -> Result<ArrayRef> {
             }
             Ok(Arc::new(BinaryArray::from(values)))
         }
-        other => Err(ArrowError::ComputeError(format!(
-            "filter not supported for {:?}",
-            other
-        ))),
+        other => Err(ArrowError::ComputeError(format!("filter not supported for {:?}", other))),
     }
 }
 
@@ -325,17 +304,11 @@ mod tests {
     fn test_list_array_limit() {
         // adapted from crate::array::test::test_list_array_slice
         // Construct a value array
-        let value_data = ArrayData::builder(DataType::Int32)
-            .len(10)
-            .add_buffer(Buffer::from(
-                &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].to_byte_slice(),
-            ))
-            .build();
+        let value_data = ArrayData::builder(DataType::Int32).len(10).add_buffer(Buffer::from(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].to_byte_slice())).build();
 
         // Construct a buffer for value offsets, for the nested array:
         //  [[0, 1], null, [2, 3], null, [4, 5], null, [6, 7, 8], null, [9]]
-        let value_offsets =
-            Buffer::from(&[0, 2, 2, 4, 4, 6, 6, 9, 9, 10].to_byte_slice());
+        let value_offsets = Buffer::from(&[0, 2, 2, 4, 4, 6, 6, 9, 9, 10].to_byte_slice());
         // 01010101 00000001
         let mut null_bits: [u8; 2] = [0; 2];
         bit_util::set_bit(&mut null_bits, 0);
@@ -346,12 +319,7 @@ mod tests {
 
         // Construct a list array from the above two
         let list_data_type = DataType::List(Box::new(DataType::Int32));
-        let list_data = ArrayData::builder(list_data_type.clone())
-            .len(9)
-            .add_buffer(value_offsets.clone())
-            .add_child_data(value_data.clone())
-            .null_bit_buffer(Buffer::from(null_bits))
-            .build();
+        let list_data = ArrayData::builder(list_data_type.clone()).len(9).add_buffer(value_offsets.clone()).add_child_data(value_data.clone()).null_bit_buffer(Buffer::from(null_bits)).build();
         let list_array: ArrayRef = Arc::new(ListArray::from(list_data));
 
         let limit_array = limit(&list_array, 6).unwrap();
@@ -360,8 +328,7 @@ mod tests {
         assert_eq!(3, limit_array.null_count());
 
         // Check offset and length for each non-null value.
-        let limit_array: &ListArray =
-            limit_array.as_any().downcast_ref::<ListArray>().unwrap();
+        let limit_array: &ListArray = limit_array.as_any().downcast_ref::<ListArray>().unwrap();
         for i in 0..limit_array.len() {
             let offset = limit_array.value_offset(i);
             let length = limit_array.value_length(i);
@@ -377,26 +344,13 @@ mod tests {
     #[test]
     fn test_struct_array_limit() {
         // adapted from crate::array::test::test_struct_array_slice
-        let boolean_data = ArrayData::builder(DataType::Boolean)
-            .len(5)
-            .add_buffer(Buffer::from([0b00010000]))
-            .null_bit_buffer(Buffer::from([0b00010001]))
-            .build();
-        let int_data = ArrayData::builder(DataType::Int32)
-            .len(5)
-            .add_buffer(Buffer::from([0, 28, 42, 0, 0].to_byte_slice()))
-            .null_bit_buffer(Buffer::from([0b00000110]))
-            .build();
+        let boolean_data = ArrayData::builder(DataType::Boolean).len(5).add_buffer(Buffer::from([0b00010000])).null_bit_buffer(Buffer::from([0b00010001])).build();
+        let int_data = ArrayData::builder(DataType::Int32).len(5).add_buffer(Buffer::from([0, 28, 42, 0, 0].to_byte_slice())).null_bit_buffer(Buffer::from([0b00000110])).build();
 
         let mut field_types = vec![];
         field_types.push(Field::new("a", DataType::Boolean, false));
         field_types.push(Field::new("b", DataType::Int32, false));
-        let struct_array_data = ArrayData::builder(DataType::Struct(field_types))
-            .len(5)
-            .add_child_data(boolean_data.clone())
-            .add_child_data(int_data.clone())
-            .null_bit_buffer(Buffer::from([0b00010111]))
-            .build();
+        let struct_array_data = ArrayData::builder(DataType::Struct(field_types)).len(5).add_child_data(boolean_data.clone()).add_child_data(int_data.clone()).null_bit_buffer(Buffer::from([0b00010111])).build();
         let struct_array = StructArray::from(struct_array_data);
 
         assert_eq!(5, struct_array.len());

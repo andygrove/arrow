@@ -46,9 +46,7 @@ impl MemTracker {
     /// Creates new memory tracker.
     #[inline]
     pub fn new() -> MemTracker {
-        MemTracker {
-            memory_usage: Cell::new((0, 0)),
-        }
+        MemTracker { memory_usage: Cell::new((0, 0)) }
     }
 
     /// Returns the current memory consumption, in bytes.
@@ -278,12 +276,7 @@ impl<T> BufferPtr<T> {
     /// Creates new buffer from a vector.
     pub fn new(v: Vec<T>) -> Self {
         let len = v.len();
-        Self {
-            data: Rc::new(v),
-            start: 0,
-            len,
-            mem_tracker: None,
-        }
+        Self { data: Rc::new(v), start: 0, len, mem_tracker: None }
     }
 
     /// Returns slice of data in this buffer.
@@ -374,10 +367,7 @@ impl<T: Debug> Display for BufferPtr<T> {
 
 impl<T> Drop for BufferPtr<T> {
     fn drop(&mut self) {
-        if self.is_mem_tracked()
-            && Rc::strong_count(&self.data) == 1
-            && Rc::weak_count(&self.data) == 0
-        {
+        if self.is_mem_tracked() && Rc::strong_count(&self.data) == 1 && Rc::weak_count(&self.data) == 0 {
             let mc = self.mem_tracker.as_ref().unwrap();
             mc.alloc(-(self.data.capacity() as i64));
         }
@@ -408,15 +398,9 @@ mod tests {
         let max_capacity = {
             let mut buffer2 = ByteBuffer::new().with_mem_tracker(mem_tracker.clone());
             buffer2.reserve(30);
-            assert_eq!(
-                mem_tracker.memory_usage(),
-                buffer2.capacity() as i64 + capacity
-            );
+            assert_eq!(mem_tracker.memory_usage(), buffer2.capacity() as i64 + capacity);
             buffer2.set_data(vec![0; 100]);
-            assert_eq!(
-                mem_tracker.memory_usage(),
-                buffer2.capacity() as i64 + capacity
-            );
+            assert_eq!(mem_tracker.memory_usage(), buffer2.capacity() as i64 + capacity);
             buffer2.capacity() as i64 + capacity
         };
 

@@ -43,16 +43,8 @@ pub(super) struct ProjectRelation {
 }
 
 impl ProjectRelation {
-    pub fn new(
-        input: Rc<RefCell<Relation>>,
-        expr: Vec<CompiledExpr>,
-        schema: Arc<Schema>,
-    ) -> Self {
-        ProjectRelation {
-            input,
-            expr,
-            schema,
-        }
+    pub fn new(input: Rc<RefCell<Relation>>, expr: Vec<CompiledExpr>, schema: Arc<Schema>) -> Self {
+        ProjectRelation { input, expr, schema }
     }
 }
 
@@ -62,18 +54,11 @@ impl Iterator for ProjectRelation {
     fn next(&mut self) -> Option<Self::Item> {
         match self.input.borrow_mut().next()? {
             Some(batch) => {
-                let projected_columns: Result<Vec<ArrayRef>> =
-                    self.expr.iter().map(|e| e.invoke(&batch)).collect();
+                let projected_columns: Result<Vec<ArrayRef>> = self.expr.iter().map(|e| e.invoke(&batch)).collect();
 
-                let schema = Schema::new(
-                    self.expr
-                        .iter()
-                        .map(|e| Field::new(&e.name(), e.data_type().clone(), true))
-                        .collect(),
-                );
+                let schema = Schema::new(self.expr.iter().map(|e| Field::new(&e.name(), e.data_type().clone(), true)).collect());
 
-                let projected_batch: RecordBatch =
-                    RecordBatch::try_new(Arc::new(schema), projected_columns?)?;
+                let projected_batch: RecordBatch = RecordBatch::try_new(Arc::new(schema), projected_columns?)?;
 
                 Some(Ok(projected_batch))
             }
@@ -120,23 +105,11 @@ mod tests {
 
         let testdata = env::var("ARROW_TEST_DATA").expect("ARROW_TEST_DATA not defined");
 
-        let ds = CsvBatchIterator::new(
-            &format!("{}/csv/aggregate_test_100.csv", testdata),
-            schema.clone(),
-            true,
-            &None,
-            1024,
-        );
-        let relation = Rc::new(RefCell::new(DataSourceRelation::new(Arc::new(
-            Mutex::new(ds),
-        ))));
+        let ds = CsvBatchIterator::new(&format!("{}/csv/aggregate_test_100.csv", testdata), schema.clone(), true, &None, 1024);
+        let relation = Rc::new(RefCell::new(DataSourceRelation::new(Arc::new(Mutex::new(ds)))));
         let context = ExecutionContext::new();
 
-        let projection_expr =
-            vec![
-                expression::compile_expr(&context, &Expr::Column(0), schema.as_ref())
-                    .unwrap(),
-            ];
+        let projection_expr = vec![expression::compile_expr(&context, &Expr::Column(0), schema.as_ref()).unwrap()];
 
         let mut projection = ProjectRelation::new(relation, projection_expr, schema);
         let batch = projection.next().unwrap().unwrap();

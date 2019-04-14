@@ -44,31 +44,25 @@ impl RecordBatch {
     pub fn try_new(schema: Arc<Schema>, columns: Vec<ArrayRef>) -> Result<Self> {
         // check that there are some columns
         if columns.is_empty() {
-            return Err(ArrowError::InvalidArgumentError(
-                "at least one column must be defined to create a record batch"
-                    .to_string(),
-            ));
+            return Err(ArrowError::InvalidArgumentError("at least one column must be defined to create a record batch".to_string()));
         }
         // check that number of fields in schema match column length
         if schema.fields().len() != columns.len() {
-            return Err(ArrowError::InvalidArgumentError(
-                "number of columns must match number of fields in schema".to_string(),
-            ));
+            return Err(ArrowError::InvalidArgumentError("number of columns must match number of fields in schema".to_string()));
         }
         // check that all columns have the same row count, and match the schema
         let len = columns[0].data().len();
         for i in 0..columns.len() {
             if columns[i].len() != len {
-                return Err(ArrowError::InvalidArgumentError(
-                    "all columns in a record batch must have the same length".to_string(),
-                ));
+                return Err(ArrowError::InvalidArgumentError("all columns in a record batch must have the same length".to_string()));
             }
             if columns[i].data_type() != schema.field(i).data_type() {
                 return Err(ArrowError::InvalidArgumentError(format!(
-                    "column types must match schema types, expected {:?} but found {:?} at column index {}", 
+                    "column types must match schema types, expected {:?} but found {:?} at column index {}",
                     schema.field(i).data_type(),
                     columns[i].data_type(),
-                    i)));
+                    i
+                )));
             }
         }
         Ok(RecordBatch { schema, columns })
@@ -107,30 +101,18 @@ mod tests {
 
     #[test]
     fn create_record_batch() {
-        let schema = Schema::new(vec![
-            Field::new("a", DataType::Int32, false),
-            Field::new("b", DataType::Utf8, false),
-        ]);
+        let schema = Schema::new(vec![Field::new("a", DataType::Int32, false), Field::new("b", DataType::Utf8, false)]);
 
         let v = vec![1, 2, 3, 4, 5];
-        let array_data = ArrayData::builder(DataType::Int32)
-            .len(5)
-            .add_buffer(Buffer::from(v.to_byte_slice()))
-            .build();
+        let array_data = ArrayData::builder(DataType::Int32).len(5).add_buffer(Buffer::from(v.to_byte_slice())).build();
         let a = Int32Array::from(array_data);
 
         let v = vec![b'a', b'b', b'c', b'd', b'e'];
         let offset_data = vec![0, 1, 2, 3, 4, 5, 6];
-        let array_data = ArrayData::builder(DataType::Utf8)
-            .len(5)
-            .add_buffer(Buffer::from(offset_data.to_byte_slice()))
-            .add_buffer(Buffer::from(v.to_byte_slice()))
-            .build();
+        let array_data = ArrayData::builder(DataType::Utf8).len(5).add_buffer(Buffer::from(offset_data.to_byte_slice())).add_buffer(Buffer::from(v.to_byte_slice())).build();
         let b = BinaryArray::from(array_data);
 
-        let record_batch =
-            RecordBatch::try_new(Arc::new(schema), vec![Arc::new(a), Arc::new(b)])
-                .unwrap();
+        let record_batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(a), Arc::new(b)]).unwrap();
 
         assert_eq!(5, record_batch.num_rows());
         assert_eq!(2, record_batch.num_columns());
@@ -157,8 +139,7 @@ mod tests {
         let a = Int32Array::from(vec![1, 2, 3, 4, 5]);
         let b = Int32Array::from(vec![1, 2, 3, 4, 5]);
 
-        let batch =
-            RecordBatch::try_new(Arc::new(schema), vec![Arc::new(a), Arc::new(b)]);
+        let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(a), Arc::new(b)]);
         assert!(!batch.is_ok());
     }
 }

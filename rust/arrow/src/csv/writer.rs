@@ -31,29 +31,13 @@
 //! use std::fs::File;
 //! use std::sync::Arc;
 //!
-//! let schema = Schema::new(vec![
-//!     Field::new("c1", DataType::Utf8, false),
-//!     Field::new("c2", DataType::Float64, true),
-//!     Field::new("c3", DataType::UInt32, false),
-//!     Field::new("c3", DataType::Boolean, true),
-//! ]);
-//! let c1 = BinaryArray::from(vec![
-//!     "Lorem ipsum dolor sit amet",
-//!     "consectetur adipiscing elit",
-//!     "sed do eiusmod tempor",
-//! ]);
-//! let c2 = PrimitiveArray::<Float64Type>::from(vec![
-//!     Some(123.564532),
-//!     None,
-//!     Some(-556132.25),
-//! ]);
+//! let schema = Schema::new(vec![Field::new("c1", DataType::Utf8, false), Field::new("c2", DataType::Float64, true), Field::new("c3", DataType::UInt32, false), Field::new("c3", DataType::Boolean, true)]);
+//! let c1 = BinaryArray::from(vec!["Lorem ipsum dolor sit amet", "consectetur adipiscing elit", "sed do eiusmod tempor"]);
+//! let c2 = PrimitiveArray::<Float64Type>::from(vec![Some(123.564532), None, Some(-556132.25)]);
 //! let c3 = PrimitiveArray::<UInt32Type>::from(vec![3, 2, 1]);
 //! let c4 = PrimitiveArray::<BooleanType>::from(vec![Some(true), Some(false), None]);
 //!
-//! let batch = RecordBatch::try_new(
-//!     Arc::new(schema),
-//!     vec![Arc::new(c1), Arc::new(c2), Arc::new(c3), Arc::new(c4)],
-//! ).unwrap();
+//! let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(c1), Arc::new(c2), Arc::new(c3), Arc::new(c4)]).unwrap();
 //!
 //! let file = get_temp_file("out.csv", &[]);
 //!
@@ -92,30 +76,20 @@ pub struct Writer {
 impl Writer {
     /// Create a new CsvWriter from a file, with default options
     pub fn new(file: File) -> Self {
-        Writer {
-            file,
-            delimiter: b',',
-            has_headers: true,
-        }
+        Writer { file, delimiter: b',', has_headers: true }
     }
 
     /// Write a vector of record batches to a file
     pub fn write(&self, batches: Vec<&RecordBatch>) -> Result<()> {
         if batches.is_empty() {
-            return Err(ArrowError::CsvError(
-                "No record batches supplied to the CSV writer".to_string(),
-            ));
+            return Err(ArrowError::CsvError("No record batches supplied to the CSV writer".to_string()));
         }
         let mut builder = csv_crate::WriterBuilder::new();
         let mut wtr = builder.delimiter(self.delimiter).from_writer(&self.file);
         let num_columns = batches[0].num_columns();
         if self.has_headers {
             let mut headers: Vec<String> = Vec::with_capacity(num_columns);
-            &batches[0]
-                .schema()
-                .fields()
-                .iter()
-                .for_each(|field| headers.push(field.name().to_string()));
+            &batches[0].schema().fields().iter().for_each(|field| headers.push(field.name().to_string()));
             wtr.write_record(&headers[..])?;
         }
 
@@ -131,36 +105,16 @@ impl Writer {
                         continue;
                     }
                     let string = match col.data_type() {
-                        DataType::Float64 => {
-                            write_primitive_value::<Float64Type>(col, row_index)
-                        }
-                        DataType::Float32 => {
-                            write_primitive_value::<Float32Type>(col, row_index)
-                        }
-                        DataType::Int8 => {
-                            write_primitive_value::<Int8Type>(col, row_index)
-                        }
-                        DataType::Int16 => {
-                            write_primitive_value::<Int16Type>(col, row_index)
-                        }
-                        DataType::Int32 => {
-                            write_primitive_value::<Int32Type>(col, row_index)
-                        }
-                        DataType::Int64 => {
-                            write_primitive_value::<Int64Type>(col, row_index)
-                        }
-                        DataType::UInt8 => {
-                            write_primitive_value::<UInt8Type>(col, row_index)
-                        }
-                        DataType::UInt16 => {
-                            write_primitive_value::<UInt16Type>(col, row_index)
-                        }
-                        DataType::UInt32 => {
-                            write_primitive_value::<UInt32Type>(col, row_index)
-                        }
-                        DataType::UInt64 => {
-                            write_primitive_value::<UInt64Type>(col, row_index)
-                        }
+                        DataType::Float64 => write_primitive_value::<Float64Type>(col, row_index),
+                        DataType::Float32 => write_primitive_value::<Float32Type>(col, row_index),
+                        DataType::Int8 => write_primitive_value::<Int8Type>(col, row_index),
+                        DataType::Int16 => write_primitive_value::<Int16Type>(col, row_index),
+                        DataType::Int32 => write_primitive_value::<Int32Type>(col, row_index),
+                        DataType::Int64 => write_primitive_value::<Int64Type>(col, row_index),
+                        DataType::UInt8 => write_primitive_value::<UInt8Type>(col, row_index),
+                        DataType::UInt16 => write_primitive_value::<UInt16Type>(col, row_index),
+                        DataType::UInt32 => write_primitive_value::<UInt32Type>(col, row_index),
+                        DataType::UInt64 => write_primitive_value::<UInt64Type>(col, row_index),
                         DataType::Boolean => {
                             let c = col.as_any().downcast_ref::<BooleanArray>().unwrap();
                             c.value(row_index).to_string()
@@ -172,10 +126,7 @@ impl Writer {
                         t => {
                             // List and Struct arrays not supported by the writer, any
                             // other type needs to be implemented
-                            return Err(ArrowError::CsvError(format!(
-                                "CSV Writer does not support {:?} data type",
-                                t
-                            )));
+                            return Err(ArrowError::CsvError(format!("CSV Writer does not support {:?} data type", t)));
                         }
                     };
 
@@ -200,10 +151,7 @@ pub struct WriterBuilder {
 
 impl Default for WriterBuilder {
     fn default() -> Self {
-        Self {
-            has_headers: true,
-            delimiter: None,
-        }
+        Self { has_headers: true, delimiter: None }
     }
 }
 
@@ -267,31 +215,14 @@ mod tests {
 
     #[test]
     fn test_write_csv() {
-        let schema = Schema::new(vec![
-            Field::new("c1", DataType::Utf8, false),
-            Field::new("c2", DataType::Float64, true),
-            Field::new("c3", DataType::UInt32, false),
-            Field::new("c3", DataType::Boolean, true),
-        ]);
+        let schema = Schema::new(vec![Field::new("c1", DataType::Utf8, false), Field::new("c2", DataType::Float64, true), Field::new("c3", DataType::UInt32, false), Field::new("c3", DataType::Boolean, true)]);
 
-        let c1 = BinaryArray::from(vec![
-            "Lorem ipsum dolor sit amet",
-            "consectetur adipiscing elit",
-            "sed do eiusmod tempor",
-        ]);
-        let c2 = PrimitiveArray::<Float64Type>::from(vec![
-            Some(123.564532),
-            None,
-            Some(-556132.25),
-        ]);
+        let c1 = BinaryArray::from(vec!["Lorem ipsum dolor sit amet", "consectetur adipiscing elit", "sed do eiusmod tempor"]);
+        let c2 = PrimitiveArray::<Float64Type>::from(vec![Some(123.564532), None, Some(-556132.25)]);
         let c3 = PrimitiveArray::<UInt32Type>::from(vec![3, 2, 1]);
         let c4 = PrimitiveArray::<BooleanType>::from(vec![Some(true), Some(false), None]);
 
-        let batch = RecordBatch::try_new(
-            Arc::new(schema),
-            vec![Arc::new(c1), Arc::new(c2), Arc::new(c3), Arc::new(c4)],
-        )
-        .unwrap();
+        let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(c1), Arc::new(c2), Arc::new(c3), Arc::new(c4)]).unwrap();
 
         let file = get_temp_file("columns.csv", &[]);
 
@@ -304,39 +235,21 @@ mod tests {
         file.read_to_end(&mut buffer).unwrap();
 
         assert_eq!(
-            "c1,c2,c3,c3\nLorem ipsum dolor sit amet,123.564532,3,true\nconsectetur adipiscing elit,,2,false\nsed do eiusmod tempor,-556132.25,1,\nLorem ipsum dolor sit amet,123.564532,3,true\nconsectetur adipiscing elit,,2,false\nsed do eiusmod tempor,-556132.25,1,\n"
-            .to_string(),
+            "c1,c2,c3,c3\nLorem ipsum dolor sit amet,123.564532,3,true\nconsectetur adipiscing elit,,2,false\nsed do eiusmod tempor,-556132.25,1,\nLorem ipsum dolor sit amet,123.564532,3,true\nconsectetur adipiscing elit,,2,false\nsed do eiusmod tempor,-556132.25,1,\n".to_string(),
             String::from_utf8(buffer).unwrap()
         );
     }
 
     #[test]
     fn test_write_csv_custom_options() {
-        let schema = Schema::new(vec![
-            Field::new("c1", DataType::Utf8, false),
-            Field::new("c2", DataType::Float64, true),
-            Field::new("c3", DataType::UInt32, false),
-            Field::new("c3", DataType::Boolean, true),
-        ]);
+        let schema = Schema::new(vec![Field::new("c1", DataType::Utf8, false), Field::new("c2", DataType::Float64, true), Field::new("c3", DataType::UInt32, false), Field::new("c3", DataType::Boolean, true)]);
 
-        let c1 = BinaryArray::from(vec![
-            "Lorem ipsum dolor sit amet",
-            "consectetur adipiscing elit",
-            "sed do eiusmod tempor",
-        ]);
-        let c2 = PrimitiveArray::<Float64Type>::from(vec![
-            Some(123.564532),
-            None,
-            Some(-556132.25),
-        ]);
+        let c1 = BinaryArray::from(vec!["Lorem ipsum dolor sit amet", "consectetur adipiscing elit", "sed do eiusmod tempor"]);
+        let c2 = PrimitiveArray::<Float64Type>::from(vec![Some(123.564532), None, Some(-556132.25)]);
         let c3 = PrimitiveArray::<UInt32Type>::from(vec![3, 2, 1]);
         let c4 = PrimitiveArray::<BooleanType>::from(vec![Some(true), Some(false), None]);
 
-        let batch = RecordBatch::try_new(
-            Arc::new(schema),
-            vec![Arc::new(c1), Arc::new(c2), Arc::new(c3), Arc::new(c4)],
-        )
-        .unwrap();
+        let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(c1), Arc::new(c2), Arc::new(c3), Arc::new(c4)]).unwrap();
 
         let file = get_temp_file("custom_options.csv", &[]);
 
@@ -350,10 +263,6 @@ mod tests {
         let mut buffer: Vec<u8> = vec![];
         file.read_to_end(&mut buffer).unwrap();
 
-        assert_eq!(
-            "Lorem ipsum dolor sit amet|123.564532|3|true\nconsectetur adipiscing elit||2|false\nsed do eiusmod tempor|-556132.25|1|\n"
-            .to_string(),
-            String::from_utf8(buffer).unwrap()
-        );
+        assert_eq!("Lorem ipsum dolor sit amet|123.564532|3|true\nconsectetur adipiscing elit||2|false\nsed do eiusmod tempor|-556132.25|1|\n".to_string(), String::from_utf8(buffer).unwrap());
     }
 }

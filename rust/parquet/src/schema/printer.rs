@@ -36,19 +36,14 @@
 //!     print_parquet_metadata(&mut std::io::stdout(), &parquet_metadata);
 //!     print_file_metadata(&mut std::io::stdout(), &parquet_metadata.file_metadata());
 //!
-//!     print_schema(
-//!         &mut std::io::stdout(),
-//!         &parquet_metadata.file_metadata().schema(),
-//!     );
+//!     print_schema(&mut std::io::stdout(), &parquet_metadata.file_metadata().schema());
 //! }
 //! ```
 
 use std::{fmt, io};
 
 use crate::basic::{LogicalType, Type as PhysicalType};
-use crate::file::metadata::{
-    ColumnChunkMetaData, FileMetaData, ParquetMetaData, RowGroupMetaData,
-};
+use crate::file::metadata::{ColumnChunkMetaData, FileMetaData, ParquetMetaData, RowGroupMetaData};
 use crate::schema::types::Type;
 
 /// Prints Parquet metadata [`ParquetMetaData`](`::file::metadata::ParquetMetaData`)
@@ -112,11 +107,7 @@ fn print_row_group_metadata(out: &mut io::Write, rg_metadata: &RowGroupMetaData)
 fn print_column_chunk_metadata(out: &mut io::Write, cc_metadata: &ColumnChunkMetaData) {
     writeln!(out, "column type: {}", cc_metadata.column_type());
     writeln!(out, "column path: {}", cc_metadata.column_path());
-    let encoding_strs: Vec<_> = cc_metadata
-        .encodings()
-        .iter()
-        .map(|e| format!("{}", e))
-        .collect();
+    let encoding_strs: Vec<_> = cc_metadata.encodings().iter().map(|e| format!("{}", e)).collect();
     writeln!(out, "encodings: {}", encoding_strs.join(" "));
     let file_path_str = match cc_metadata.file_path() {
         None => "N/A",
@@ -125,16 +116,8 @@ fn print_column_chunk_metadata(out: &mut io::Write, cc_metadata: &ColumnChunkMet
     writeln!(out, "file path: {}", file_path_str);
     writeln!(out, "file offset: {}", cc_metadata.file_offset());
     writeln!(out, "num of values: {}", cc_metadata.num_values());
-    writeln!(
-        out,
-        "total compressed size (in bytes): {}",
-        cc_metadata.compressed_size()
-    );
-    writeln!(
-        out,
-        "total uncompressed size (in bytes): {}",
-        cc_metadata.uncompressed_size()
-    );
+    writeln!(out, "total compressed size (in bytes): {}", cc_metadata.compressed_size());
+    writeln!(out, "total uncompressed size (in bytes): {}", cc_metadata.uncompressed_size());
     writeln!(out, "data page offset: {}", cc_metadata.data_page_offset());
     let index_page_offset_str = match cc_metadata.index_page_offset() {
         None => "N/A".to_owned(),
@@ -218,19 +201,9 @@ impl<'a> Printer<'a> {
                     }
                     other_logical_type => format!(" ({})", other_logical_type),
                 };
-                write!(
-                    self.output,
-                    "{} {} {}{};",
-                    basic_info.repetition(),
-                    phys_type_str,
-                    basic_info.name(),
-                    logical_type_str
-                );
+                write!(self.output, "{} {} {}{};", basic_info.repetition(), phys_type_str, basic_info.name(), logical_type_str);
             }
-            &Type::GroupType {
-                ref basic_info,
-                ref fields,
-            } => {
+            &Type::GroupType { ref basic_info, ref fields } => {
                 if basic_info.has_repetition() {
                     let r = basic_info.repetition();
                     write!(self.output, "{} group {} ", r, basic_info.name());
@@ -279,11 +252,7 @@ mod tests {
         let mut s = String::new();
         {
             let mut p = Printer::new(&mut s);
-            let foo = Type::primitive_type_builder("foo", PhysicalType::INT32)
-                .with_repetition(Repetition::REQUIRED)
-                .with_logical_type(LogicalType::INT_32)
-                .build()
-                .unwrap();
+            let foo = Type::primitive_type_builder("foo", PhysicalType::INT32).with_repetition(Repetition::REQUIRED).with_logical_type(LogicalType::INT_32).build().unwrap();
             p.print(&foo);
         }
         assert_eq!(&mut s, "REQUIRED INT32 foo (INT_32);");
@@ -294,10 +263,7 @@ mod tests {
         let mut s = String::new();
         {
             let mut p = Printer::new(&mut s);
-            let foo = Type::primitive_type_builder("foo", PhysicalType::DOUBLE)
-                .with_repetition(Repetition::REQUIRED)
-                .build()
-                .unwrap();
+            let foo = Type::primitive_type_builder("foo", PhysicalType::DOUBLE).with_repetition(Repetition::REQUIRED).build().unwrap();
             p.print(&foo);
         }
         assert_eq!(&mut s, "REQUIRED DOUBLE foo;");
@@ -308,39 +274,22 @@ mod tests {
         let mut s = String::new();
         {
             let mut p = Printer::new(&mut s);
-            let f1 = Type::primitive_type_builder("f1", PhysicalType::INT32)
-                .with_repetition(Repetition::REQUIRED)
-                .with_logical_type(LogicalType::INT_32)
-                .with_id(0)
+            let f1 = Type::primitive_type_builder("f1", PhysicalType::INT32).with_repetition(Repetition::REQUIRED).with_logical_type(LogicalType::INT_32).with_id(0).build();
+            let f2 = Type::primitive_type_builder("f2", PhysicalType::BYTE_ARRAY).with_logical_type(LogicalType::UTF8).with_id(1).build();
+            let f3 = Type::primitive_type_builder("f3", PhysicalType::FIXED_LEN_BYTE_ARRAY)
+                .with_repetition(Repetition::REPEATED)
+                .with_logical_type(LogicalType::INTERVAL)
+                .with_length(12)
+                .with_id(2)
                 .build();
-            let f2 = Type::primitive_type_builder("f2", PhysicalType::BYTE_ARRAY)
-                .with_logical_type(LogicalType::UTF8)
-                .with_id(1)
-                .build();
-            let f3 =
-                Type::primitive_type_builder("f3", PhysicalType::FIXED_LEN_BYTE_ARRAY)
-                    .with_repetition(Repetition::REPEATED)
-                    .with_logical_type(LogicalType::INTERVAL)
-                    .with_length(12)
-                    .with_id(2)
-                    .build();
             let mut struct_fields = Vec::new();
             struct_fields.push(Rc::new(f1.unwrap()));
             struct_fields.push(Rc::new(f2.unwrap()));
-            let foo = Type::group_type_builder("foo")
-                .with_repetition(Repetition::OPTIONAL)
-                .with_fields(&mut struct_fields)
-                .with_id(1)
-                .build()
-                .unwrap();
+            let foo = Type::group_type_builder("foo").with_repetition(Repetition::OPTIONAL).with_fields(&mut struct_fields).with_id(1).build().unwrap();
             let mut fields = Vec::new();
             fields.push(Rc::new(foo));
             fields.push(Rc::new(f3.unwrap()));
-            let message = Type::group_type_builder("schema")
-                .with_fields(&mut fields)
-                .with_id(2)
-                .build()
-                .unwrap();
+            let message = Type::group_type_builder("schema").with_fields(&mut fields).with_id(2).build().unwrap();
             p.print(&message);
         }
         let expected = "message schema {
@@ -355,76 +304,32 @@ mod tests {
 
     #[test]
     fn test_print_and_parse_primitive() {
-        let a2 = Type::primitive_type_builder("a2", PhysicalType::BYTE_ARRAY)
-            .with_repetition(Repetition::REPEATED)
-            .with_logical_type(LogicalType::UTF8)
-            .build()
-            .unwrap();
+        let a2 = Type::primitive_type_builder("a2", PhysicalType::BYTE_ARRAY).with_repetition(Repetition::REPEATED).with_logical_type(LogicalType::UTF8).build().unwrap();
 
-        let a1 = Type::group_type_builder("a1")
-            .with_repetition(Repetition::OPTIONAL)
-            .with_logical_type(LogicalType::LIST)
-            .with_fields(&mut vec![Rc::new(a2)])
-            .build()
-            .unwrap();
+        let a1 = Type::group_type_builder("a1").with_repetition(Repetition::OPTIONAL).with_logical_type(LogicalType::LIST).with_fields(&mut vec![Rc::new(a2)]).build().unwrap();
 
-        let b3 = Type::primitive_type_builder("b3", PhysicalType::INT32)
-            .with_repetition(Repetition::OPTIONAL)
-            .build()
-            .unwrap();
+        let b3 = Type::primitive_type_builder("b3", PhysicalType::INT32).with_repetition(Repetition::OPTIONAL).build().unwrap();
 
-        let b4 = Type::primitive_type_builder("b4", PhysicalType::DOUBLE)
-            .with_repetition(Repetition::OPTIONAL)
-            .build()
-            .unwrap();
+        let b4 = Type::primitive_type_builder("b4", PhysicalType::DOUBLE).with_repetition(Repetition::OPTIONAL).build().unwrap();
 
-        let b2 = Type::group_type_builder("b2")
-            .with_repetition(Repetition::REPEATED)
-            .with_logical_type(LogicalType::NONE)
-            .with_fields(&mut vec![Rc::new(b3), Rc::new(b4)])
-            .build()
-            .unwrap();
+        let b2 = Type::group_type_builder("b2").with_repetition(Repetition::REPEATED).with_logical_type(LogicalType::NONE).with_fields(&mut vec![Rc::new(b3), Rc::new(b4)]).build().unwrap();
 
-        let b1 = Type::group_type_builder("b1")
-            .with_repetition(Repetition::OPTIONAL)
-            .with_logical_type(LogicalType::LIST)
-            .with_fields(&mut vec![Rc::new(b2)])
-            .build()
-            .unwrap();
+        let b1 = Type::group_type_builder("b1").with_repetition(Repetition::OPTIONAL).with_logical_type(LogicalType::LIST).with_fields(&mut vec![Rc::new(b2)]).build().unwrap();
 
-        let a0 = Type::group_type_builder("a0")
-            .with_repetition(Repetition::REQUIRED)
-            .with_fields(&mut vec![Rc::new(a1), Rc::new(b1)])
-            .build()
-            .unwrap();
+        let a0 = Type::group_type_builder("a0").with_repetition(Repetition::REQUIRED).with_fields(&mut vec![Rc::new(a1), Rc::new(b1)]).build().unwrap();
 
-        let message = Type::group_type_builder("root")
-            .with_fields(&mut vec![Rc::new(a0)])
-            .build()
-            .unwrap();
+        let message = Type::group_type_builder("root").with_fields(&mut vec![Rc::new(a0)]).build().unwrap();
 
         assert_print_parse_message(message);
     }
 
     #[test]
     fn test_print_and_parse_nested() {
-        let f1 = Type::primitive_type_builder("f1", PhysicalType::INT32)
-            .with_repetition(Repetition::REQUIRED)
-            .with_logical_type(LogicalType::INT_32)
-            .build()
-            .unwrap();
+        let f1 = Type::primitive_type_builder("f1", PhysicalType::INT32).with_repetition(Repetition::REQUIRED).with_logical_type(LogicalType::INT_32).build().unwrap();
 
-        let f2 = Type::primitive_type_builder("f2", PhysicalType::BYTE_ARRAY)
-            .with_repetition(Repetition::OPTIONAL)
-            .with_logical_type(LogicalType::UTF8)
-            .build()
-            .unwrap();
+        let f2 = Type::primitive_type_builder("f2", PhysicalType::BYTE_ARRAY).with_repetition(Repetition::OPTIONAL).with_logical_type(LogicalType::UTF8).build().unwrap();
 
-        let foo = Type::group_type_builder("foo")
-            .with_repetition(Repetition::OPTIONAL)
-            .with_fields(&mut vec![Rc::new(f1), Rc::new(f2)])
-            .build()
-            .unwrap();
+        let foo = Type::group_type_builder("foo").with_repetition(Repetition::OPTIONAL).with_fields(&mut vec![Rc::new(f1), Rc::new(f2)]).build().unwrap();
 
         let f3 = Type::primitive_type_builder("f3", PhysicalType::FIXED_LEN_BYTE_ARRAY)
             .with_repetition(Repetition::REPEATED)
@@ -433,10 +338,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let message = Type::group_type_builder("schema")
-            .with_fields(&mut vec![Rc::new(foo), Rc::new(f3)])
-            .build()
-            .unwrap();
+        let message = Type::group_type_builder("schema").with_fields(&mut vec![Rc::new(foo), Rc::new(f3)]).build().unwrap();
 
         assert_print_parse_message(message);
     }
@@ -459,10 +361,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let message = Type::group_type_builder("schema")
-            .with_fields(&mut vec![Rc::new(f1), Rc::new(f2)])
-            .build()
-            .unwrap();
+        let message = Type::group_type_builder("schema").with_fields(&mut vec![Rc::new(f1), Rc::new(f2)]).build().unwrap();
 
         assert_print_parse_message(message);
     }

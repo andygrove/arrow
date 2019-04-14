@@ -33,33 +33,19 @@ use crate::error::{ArrowError, Result};
 
 /// Helper function to perform boolean lambda function on values from two arrays, this
 /// version does not attempt to use SIMD.
-pub fn compare_op<T, F>(
-    left: &PrimitiveArray<T>,
-    right: &PrimitiveArray<T>,
-    op: F,
-) -> Result<BooleanArray>
+pub fn compare_op<T, F>(left: &PrimitiveArray<T>, right: &PrimitiveArray<T>, op: F) -> Result<BooleanArray>
 where
     T: ArrowNumericType,
     F: Fn(Option<T::Native>, Option<T::Native>) -> bool,
 {
     if left.len() != right.len() {
-        return Err(ArrowError::ComputeError(
-            "Cannot perform math operation on arrays of different length".to_string(),
-        ));
+        return Err(ArrowError::ComputeError("Cannot perform math operation on arrays of different length".to_string()));
     }
     let mut b = BooleanArray::builder(left.len());
     for i in 0..left.len() {
         let index = i;
-        let l = if left.is_null(i) {
-            None
-        } else {
-            Some(left.value(index))
-        };
-        let r = if right.is_null(i) {
-            None
-        } else {
-            Some(right.value(index))
-        };
+        let l = if left.is_null(i) { None } else { Some(left.value(index)) };
+        let r = if right.is_null(i) { None } else { Some(right.value(index)) };
         b.append_value(op(l, r))?;
     }
     Ok(b.finish())
@@ -68,26 +54,16 @@ where
 /// Helper function to perform boolean lambda function on values from two arrays using
 /// SIMD.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-fn simd_compare_op<T, F>(
-    left: &PrimitiveArray<T>,
-    right: &PrimitiveArray<T>,
-    op: F,
-) -> Result<BooleanArray>
+fn simd_compare_op<T, F>(left: &PrimitiveArray<T>, right: &PrimitiveArray<T>, op: F) -> Result<BooleanArray>
 where
     T: ArrowNumericType,
     F: Fn(T::Simd, T::Simd) -> T::SimdMask,
 {
     if left.len() != right.len() {
-        return Err(ArrowError::ComputeError(
-            "Cannot perform math operation on arrays of different length".to_string(),
-        ));
+        return Err(ArrowError::ComputeError("Cannot perform math operation on arrays of different length".to_string()));
     }
 
-    let null_bit_buffer = apply_bin_op_to_option_bitmap(
-        left.data().null_bitmap(),
-        right.data().null_bitmap(),
-        |a, b| a & b,
-    )?;
+    let null_bit_buffer = apply_bin_op_to_option_bitmap(left.data().null_bitmap(), right.data().null_bitmap(), |a, b| a & b)?;
 
     let lanes = T::lanes();
     let mut result = BooleanBufferBuilder::new(left.len());
@@ -101,15 +77,7 @@ where
         }
     }
 
-    let data = ArrayData::new(
-        DataType::Boolean,
-        left.len(),
-        None,
-        null_bit_buffer,
-        left.offset(),
-        vec![result.finish()],
-        vec![],
-    );
+    let data = ArrayData::new(DataType::Boolean, left.len(), None, null_bit_buffer, left.offset(), vec![result.finish()], vec![]);
     Ok(PrimitiveArray::<BooleanType>::from(Arc::new(data)))
 }
 
@@ -157,10 +125,7 @@ where
 
 /// Perform `left <= right` operation on two arrays. Null values are less than non-null
 /// values.
-pub fn lt_eq<T>(
-    left: &PrimitiveArray<T>,
-    right: &PrimitiveArray<T>,
-) -> Result<BooleanArray>
+pub fn lt_eq<T>(left: &PrimitiveArray<T>, right: &PrimitiveArray<T>) -> Result<BooleanArray>
 where
     T: ArrowNumericType,
 {
@@ -196,10 +161,7 @@ where
 
 /// Perform `left >= right` operation on two arrays. Non-null values are greater than null
 /// values.
-pub fn gt_eq<T>(
-    left: &PrimitiveArray<T>,
-    right: &PrimitiveArray<T>,
-) -> Result<BooleanArray>
+pub fn gt_eq<T>(left: &PrimitiveArray<T>, right: &PrimitiveArray<T>) -> Result<BooleanArray>
 where
     T: ArrowNumericType,
 {
