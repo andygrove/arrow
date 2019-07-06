@@ -702,6 +702,42 @@ mod tests {
     }
 
     #[test]
+    fn test_datetime() {
+
+        let schema = Schema::new(vec![
+            Field::new("VendorID", DataType::Utf8, true),
+            Field::new("tpep_pickup_datetime", DataType::Utf8, true),
+            Field::new("tpep_dropoff_datetime", DataType::Utf8, true),
+            Field::new("passenger_count", DataType::Utf8, true),
+            Field::new("trip_distance", DataType::Utf8, true),
+            Field::new("RatecodeID", DataType::Utf8, true),
+            Field::new("store_and_fwd_flag", DataType::Utf8, true),
+            Field::new("PULocationID", DataType::Utf8, true),
+            Field::new("DOLocationID", DataType::Utf8, true),
+            Field::new("payment_type", DataType::Utf8, true),
+            Field::new("fare_amount", DataType::Float64, true),
+            Field::new("extra", DataType::Utf8, true),
+            Field::new("mta_tax", DataType::Utf8, true),
+            Field::new("tip_amount", DataType::Utf8, true),
+            Field::new("tolls_amount", DataType::Utf8, true),
+            Field::new("improvement_surcharge", DataType::Utf8, true),
+            Field::new("total_amount", DataType::Utf8, true),
+        ]);
+        let file = File::open("test/data/nyc-taxi.csv").unwrap();
+
+        let mut csv = Reader::new(file, Arc::new(schema), true, 1024, None);
+        let batch = csv.next().unwrap().unwrap();
+        assert_eq!(3, batch.num_rows());
+
+//        assert_eq!(false, batch.column(1).is_null(0));
+//        assert_eq!(false, batch.column(1).is_null(1));
+//        assert_eq!(true, batch.column(1).is_null(2));
+//        assert_eq!(false, batch.column(1).is_null(3));
+//        assert_eq!(false, batch.column(1).is_null(4));
+    }
+
+
+    #[test]
     fn test_nulls() {
         let schema = Schema::new(vec![
             Field::new("c_int", DataType::UInt64, false),

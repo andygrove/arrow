@@ -248,6 +248,36 @@ fn csv_query_limit_zero() {
 }
 
 #[test]
+fn csv_query_nyc_taxi_csv() {
+    let mut ctx = ExecutionContext::new();
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("VendorID", DataType::Utf8, true),
+        Field::new("tpep_pickup_datetime", DataType::Utf8, true),
+        Field::new("tpep_dropoff_datetime", DataType::Utf8, true),
+        Field::new("passenger_count", DataType::Utf8, true),
+        Field::new("trip_distance", DataType::Utf8, true),
+        Field::new("RatecodeID", DataType::Utf8, true),
+        Field::new("store_and_fwd_flag", DataType::Utf8, true),
+        Field::new("PULocationID", DataType::Utf8, true),
+        Field::new("DOLocationID", DataType::Utf8, true),
+        Field::new("payment_type", DataType::Utf8, true),
+        Field::new("fare_amount", DataType::Float64, true),
+        Field::new("extra", DataType::Utf8, true),
+        Field::new("mta_tax", DataType::Utf8, true),
+        Field::new("tip_amount", DataType::Utf8, true),
+        Field::new("tolls_amount", DataType::Utf8, true),
+        Field::new("improvement_surcharge", DataType::Utf8, true),
+        Field::new("total_amount", DataType::Utf8, true),
+    ]));
+    register_csv(&mut ctx, "taxi", "/mnt/ssd/nyc_taxis/csv/yellow_tripdata_2018-01.csv", &schema);
+    let sql = "SELECT tpep_pickup_datetime FROM taxi LIMIT 3";
+    let actual = execute(&mut ctx, sql);
+    let expected = "\"2018-12-01 00:28:22\"\n\"2018-12-01 00:52:29\"\n\"2018-12-01 00:12:52\"\n".to_string();
+    assert_eq!(expected, actual);
+
+}
+
+#[test]
 fn csv_query_create_external_table() {
     let mut ctx = ExecutionContext::new();
     register_aggregate_csv_by_sql(&mut ctx);
