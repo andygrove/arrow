@@ -45,19 +45,10 @@ impl Table for TableImpl {
         let mut projection_index: Vec<usize> = Vec::with_capacity(columns.len());
         let mut expr: Vec<Expr> = Vec::with_capacity(columns.len());
 
-        for column in columns {
-            match schema.column_with_name(column) {
-                Some((i, _)) => {
-                    projection_index.push(i);
-                    expr.push(Expr::Column(i));
-                }
-                _ => {
-                    return Err(ExecutionError::InvalidColumn(format!(
-                        "No column named '{}'",
-                        column
-                    )));
-                }
-            }
+        for column_name in columns {
+            let i = self.column_index(column_name)?;
+            projection_index.push(i);
+            expr.push(Expr::Column(i));
         }
 
         Ok(Arc::new(TableImpl::new(Arc::new(
@@ -82,7 +73,30 @@ impl Table for TableImpl {
     fn to_logical_plan(&self) -> Arc<LogicalPlan> {
         self.plan.clone()
     }
+
+    /// Return an expression representing a column within this table
+    fn col(&self, name: &str) -> Result<Expr> {
+        Ok(Expr::Column(self.column_index(name)?))
+    }
+
+    /// Return the index of a column within this table's schema
+    fn column_index(&self, name: &str) -> Result<usize> {
+        let schema = self.plan.schema();
+        match schema.column_with_name(name) {
+            Some((i, _)) => {
+                Ok(i)
+            }
+            _ => {
+                Err(ExecutionError::InvalidColumn(format!(
+                    "No column named '{}'",
+                    name
+                )))
+            }
+        }
+    }
 }
+
+
 
 /// Create a new schema by applying a projection to this schema's fields
 fn projection(schema: &Schema, projection: &Vec<usize>) -> Result<Arc<Schema>> {
@@ -98,4 +112,77 @@ fn projection(schema: &Schema, projection: &Vec<usize>) -> Result<Arc<Schema>> {
         }
     }
     Ok(Arc::new(Schema::new(fields)))
+}
+
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::execution::context::ExecutionContext;
+    use arrow::datatypes::*;
+    use std::env;
+
+    #[test]
+    fn column_index() {
+        let t = test_table();
+        assert_eq!(0, t.column_index("c1").unwrap());
+        assert_eq!(1, t.column_index("c2").unwrap());
+        assert_eq!(12, t.column_index("c13").unwrap());
+    }
+
+    #[test]
+    fn select_columns() {
+        let mut ctx = ExecutionContext::new();
+        register_aggregate_csv(&mut ctx);
+
+        let t = ctx.table("aggregate_test_100").unwrap();
+
+        let example = t
+            .select_columns(vec!["c1", "c2", "c11"])
+            .unwrap()
+            .limit(10)
+            .unwrap();
+
+        let plan = example.to_logical_plan();
+
+        assert_eq!("Limit: UInt32(10)\n  Projection: #0, #1, #10\n    TableScan: aggregate_test_100 projection=None", format!("{:?}", plan));
+    }
+
+    fn test_table() -> Arc<dyn Table + 'static> {
+        let mut ctx = ExecutionContext::new();
+        register_aggregate_csv(&mut ctx);
+        ctx.table("aggregate_test_100").unwrap()
+    }
+
+    fn register_aggregate_csv(ctx: &mut ExecutionContext) {
+        let schema = aggr_test_schema();
+        let testdata = env::var("ARROW_TEST_DATA").expect("ARROW_TEST_DATA not defined");
+        ctx.register_csv(
+            "aggregate_test_100",
+            &format!("{}/csv/aggregate_test_100.csv", testdata),
+            &schema,
+            true,
+        );
+    }
+
+    fn aggr_test_schema() -> Arc<Schema> {
+        Arc::new(Schema::new(vec![
+            Field::new("c1", DataType::Utf8, false),
+            Field::new("c2", DataType::UInt32, false),
+            Field::new("c3", DataType::Int8, false),
+            Field::new("c4", DataType::Int16, false),
+            Field::new("c5", DataType::Int32, false),
+            Field::new("c6", DataType::Int64, false),
+            Field::new("c7", DataType::UInt8, false),
+            Field::new("c8", DataType::UInt16, false),
+            Field::new("c9", DataType::UInt32, false),
+            Field::new("c10", DataType::UInt64, false),
+            Field::new("c11", DataType::Float32, false),
+            Field::new("c12", DataType::Float64, false),
+            Field::new("c13", DataType::Utf8, false),
+        ]))
+    }
+
 }

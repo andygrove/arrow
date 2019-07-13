@@ -19,7 +19,7 @@
 //! and the DataFrame API in Apache Spark
 
 use crate::error::Result;
-use crate::logicalplan::LogicalPlan;
+use crate::logicalplan::{LogicalPlan, Expr};
 use std::sync::Arc;
 
 /// Table is an abstraction of a logical query plan
@@ -32,60 +32,11 @@ pub trait Table {
 
     /// Return the logical plan
     fn to_logical_plan(&self) -> Arc<LogicalPlan>;
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::execution::context::ExecutionContext;
-    use arrow::datatypes::*;
-    use std::env;
+    /// Return an expression representing a column within this table
+    fn col(&self, name: &str) -> Result<Expr>;
 
-    #[test]
-    fn demonstrate_api_usage() {
-        let mut ctx = ExecutionContext::new();
-        register_aggregate_csv(&mut ctx);
-
-        let t = ctx.table("aggregate_test_100").unwrap();
-
-        let example = t
-            .select_columns(vec!["c1", "c2", "c11"])
-            .unwrap()
-            .limit(10)
-            .unwrap();
-
-        let plan = example.to_logical_plan();
-
-        assert_eq!("Limit: UInt32(10)\n  Projection: #0, #1, #10\n    TableScan: aggregate_test_100 projection=None", format!("{:?}", plan));
-    }
-
-    fn register_aggregate_csv(ctx: &mut ExecutionContext) {
-        let schema = aggr_test_schema();
-        let testdata = env::var("ARROW_TEST_DATA").expect("ARROW_TEST_DATA not defined");
-        ctx.register_csv(
-            "aggregate_test_100",
-            &format!("{}/csv/aggregate_test_100.csv", testdata),
-            &schema,
-            true,
-        );
-    }
-
-    fn aggr_test_schema() -> Arc<Schema> {
-        Arc::new(Schema::new(vec![
-            Field::new("c1", DataType::Utf8, false),
-            Field::new("c2", DataType::UInt32, false),
-            Field::new("c3", DataType::Int8, false),
-            Field::new("c4", DataType::Int16, false),
-            Field::new("c5", DataType::Int32, false),
-            Field::new("c6", DataType::Int64, false),
-            Field::new("c7", DataType::UInt8, false),
-            Field::new("c8", DataType::UInt16, false),
-            Field::new("c9", DataType::UInt32, false),
-            Field::new("c10", DataType::UInt64, false),
-            Field::new("c11", DataType::Float32, false),
-            Field::new("c12", DataType::Float64, false),
-            Field::new("c13", DataType::Utf8, false),
-        ]))
-    }
+    /// Return the index of a column within this table's schema
+    fn column_index(&self, name: &str) -> Result<usize>;
 
 }
