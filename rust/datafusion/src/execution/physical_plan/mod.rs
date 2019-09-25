@@ -87,4 +87,5 @@ pub mod datasource;
 pub mod expressions;
 pub mod hash_aggregate;
 pub mod merge;
+pub mod parquet;
 pub mod projection;
