@@ -38,7 +38,7 @@ fn aggregate_query(ctx: &Rc<RefCell<ExecutionContext>>, sql: &str) {
     let results = mut_ctx.sql(&sql, 1024 * 1024).unwrap();
 
     // display the relation
-    for batch in results {}
+    for _batch in results {}
 }
 
 fn create_context() -> Rc<RefCell<ExecutionContext>> {

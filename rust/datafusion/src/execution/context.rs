@@ -25,16 +25,11 @@ use std::sync::Arc;
 
 use arrow::datatypes::*;
 
-use crate::arrow::array::{ArrayRef, BooleanBuilder};
 use crate::arrow::record_batch::RecordBatch;
 use crate::datasource::csv::CsvFile;
 use crate::datasource::parquet::ParquetTable;
 use crate::datasource::TableProvider;
 use crate::error::{ExecutionError, Result};
-use crate::execution::aggregate::AggregateRelation;
-use crate::execution::expression::*;
-use crate::execution::filter::FilterRelation;
-use crate::execution::limit::LimitRelation;
 use crate::execution::physical_plan::common;
 use crate::execution::physical_plan::datasource::DatasourceExec;
 use crate::execution::physical_plan::expressions::{
@@ -46,16 +41,11 @@ use crate::execution::physical_plan::merge::MergeExec;
 use crate::execution::physical_plan::projection::ProjectionExec;
 use crate::execution::physical_plan::selection::SelectionExec;
 use crate::execution::physical_plan::{AggregateExpr, ExecutionPlan, PhysicalExpr};
-use crate::execution::projection::ProjectRelation;
-use crate::execution::relation::{DataSourceRelation, Relation};
-use crate::execution::scalar_relation::ScalarRelation;
 use crate::execution::table_impl::TableImpl;
 use crate::logicalplan::*;
 use crate::optimizer::optimizer::OptimizerRule;
 use crate::optimizer::projection_push_down::ProjectionPushDown;
 use crate::optimizer::type_coercion::TypeCoercionRule;
-use crate::optimizer::utils;
-use crate::sql::parser::FileType;
 use crate::sql::parser::{DFASTNode, DFParser};
 use crate::sql::planner::{SchemaProvider, SqlToRel};
 use crate::table::Table;
