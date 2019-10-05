@@ -41,6 +41,7 @@ use crate::execution::physical_plan::expressions::{
     Avg, BinaryExpr, CastExpr, Column, Count, Literal, Max, Min, Sum,
 };
 use crate::execution::physical_plan::hash_aggregate::HashAggregateExec;
+use crate::execution::physical_plan::limit::LimitExec;
 use crate::execution::physical_plan::merge::MergeExec;
 use crate::execution::physical_plan::projection::ProjectionExec;
 use crate::execution::physical_plan::selection::SelectionExec;
@@ -79,10 +80,11 @@ impl ExecutionContext {
         &mut self,
         sql: &str,
         batch_size: usize,
-    ) -> Result<Rc<RefCell<dyn Relation>>> {
+    ) -> Result<Vec<RecordBatch>> {
         let plan = self.create_logical_plan(sql)?;
         let plan = self.optimize(&plan)?;
-        Ok(self.execute(&plan, batch_size)?)
+        let plan = self.create_physical_plan(&plan, batch_size)?;
+        Ok(self.collect(plan.as_ref())?)
     }
 
     /// Creates a logical plan
@@ -289,6 +291,37 @@ impl ExecutionContext {
                 let runtime_expr = self.create_physical_expr(expr, &input_schema)?;
                 Ok(Arc::new(SelectionExec::try_new(runtime_expr, input)?))
             }
+            LogicalPlan::Limit { input, expr, .. } => {
+                let input = self.create_physical_plan(input, batch_size)?;
+                let input_schema = input.as_ref().schema().clone();
+
+                match expr {
+                    &Expr::Literal(ref scalar_value) => {
+                        let limit: usize = match scalar_value {
+                            ScalarValue::Int8(x) => Ok(*x as usize),
+                            ScalarValue::Int16(x) => Ok(*x as usize),
+                            ScalarValue::Int32(x) => Ok(*x as usize),
+                            ScalarValue::Int64(x) => Ok(*x as usize),
+                            ScalarValue::UInt8(x) => Ok(*x as usize),
+                            ScalarValue::UInt16(x) => Ok(*x as usize),
+                            ScalarValue::UInt32(x) => Ok(*x as usize),
+                            ScalarValue::UInt64(x) => Ok(*x as usize),
+                            _ => Err(ExecutionError::ExecutionError(
+                                "Limit only support positive integer literals"
+                                    .to_string(),
+                            )),
+                        }?;
+                        Ok(Arc::new(LimitExec::new(
+                            input_schema.clone(),
+                            input.partitions()?,
+                            limit,
+                        )))
+                    }
+                    _ => Err(ExecutionError::ExecutionError(
+                        "Limit only support positive integer literals".to_string(),
+                    )),
+                }
+            }
             _ => Err(ExecutionError::General(
                 "Unsupported logical plan variant".to_string(),
             )),
@@ -383,181 +416,6 @@ impl ExecutionContext {
         }
     }
 
-    /// Execute a logical plan and produce a Relation (a schema-aware iterator over a
-    /// series of RecordBatch instances)
-    pub fn execute(
-        &mut self,
-        plan: &LogicalPlan,
-        batch_size: usize,
-    ) -> Result<Rc<RefCell<dyn Relation>>> {
-        match *plan {
-            LogicalPlan::TableScan {
-                ref table_name,
-                ref projection,
-                ..
-            } => match (*self.datasources).borrow().get(table_name) {
-                Some(provider) => {
-                    let ds = provider.scan(projection, batch_size)?;
-                    if ds.len() == 1 {
-                        Ok(Rc::new(RefCell::new(DataSourceRelation::new(
-                            ds[0].clone(),
-                        ))))
-                    } else {
-                        Err(ExecutionError::General(
-                            "Execution engine only supports single partition".to_string(),
-                        ))
-                    }
-                }
-                _ => Err(ExecutionError::General(format!(
-                    "No table registered as '{}'",
-                    table_name
-                ))),
-            },
-            LogicalPlan::Selection {
-                ref expr,
-                ref input,
-            } => {
-                let input_rel = self.execute(input, batch_size)?;
-                let input_schema = input_rel.as_ref().borrow().schema().clone();
-                let runtime_expr = compile_expr(&self, expr, &input_schema)?;
-                let rel = FilterRelation::new(input_rel, runtime_expr, input_schema);
-                Ok(Rc::new(RefCell::new(rel)))
-            }
-            LogicalPlan::Projection {
-                ref expr,
-                ref input,
-                ..
-            } => {
-                let input_rel = self.execute(input, batch_size)?;
-
-                let input_schema = input_rel.as_ref().borrow().schema().clone();
-
-                let project_columns: Vec<Field> =
-                    utils::exprlist_to_fields(&expr, &input_schema)?;
-
-                let project_schema = Arc::new(Schema::new(project_columns));
-
-                let compiled_expr: Result<Vec<CompiledExpr>> = expr
-                    .iter()
-                    .map(|e| compile_expr(&self, e, &input_schema))
-                    .collect();
-
-                let rel = ProjectRelation::new(input_rel, compiled_expr?, project_schema);
-
-                Ok(Rc::new(RefCell::new(rel)))
-            }
-            LogicalPlan::Aggregate {
-                ref input,
-                ref group_expr,
-                ref aggr_expr,
-                ..
-            } => {
-                let input_rel = self.execute(&input, batch_size)?;
-
-                let input_schema = input_rel.as_ref().borrow().schema().clone();
-
-                let compiled_group_expr_result: Result<Vec<CompiledExpr>> = group_expr
-                    .iter()
-                    .map(|e| compile_expr(&self, e, &input_schema))
-                    .collect();
-                let compiled_group_expr = compiled_group_expr_result?;
-
-                let compiled_aggr_expr_result: Result<Vec<CompiledAggregateExpression>> =
-                    aggr_expr
-                        .iter()
-                        .map(|e| compile_aggregate_expr(&self, e, &input_schema))
-                        .collect();
-                let compiled_aggr_expr = compiled_aggr_expr_result?;
-
-                let mut output_fields: Vec<Field> = vec![];
-                for expr in group_expr {
-                    output_fields
-                        .push(utils::expr_to_field(expr, input_schema.as_ref())?);
-                }
-                for expr in aggr_expr {
-                    output_fields
-                        .push(utils::expr_to_field(expr, input_schema.as_ref())?);
-                }
-                let rel = AggregateRelation::new(
-                    Arc::new(Schema::new(output_fields)),
-                    input_rel,
-                    compiled_group_expr,
-                    compiled_aggr_expr,
-                );
-
-                Ok(Rc::new(RefCell::new(rel)))
-            }
-            LogicalPlan::Limit {
-                ref expr,
-                ref input,
-                ..
-            } => {
-                let input_rel = self.execute(input, batch_size)?;
-
-                let input_schema = input_rel.as_ref().borrow().schema().clone();
-
-                match expr {
-                    &Expr::Literal(ref scalar_value) => {
-                        let limit: usize = match scalar_value {
-                            ScalarValue::Int8(x) => Ok(*x as usize),
-                            ScalarValue::Int16(x) => Ok(*x as usize),
-                            ScalarValue::Int32(x) => Ok(*x as usize),
-                            ScalarValue::Int64(x) => Ok(*x as usize),
-                            ScalarValue::UInt8(x) => Ok(*x as usize),
-                            ScalarValue::UInt16(x) => Ok(*x as usize),
-                            ScalarValue::UInt32(x) => Ok(*x as usize),
-                            ScalarValue::UInt64(x) => Ok(*x as usize),
-                            _ => Err(ExecutionError::ExecutionError(
-                                "Limit only support positive integer literals"
-                                    .to_string(),
-                            )),
-                        }?;
-                        let rel = LimitRelation::new(input_rel, limit, input_schema);
-                        Ok(Rc::new(RefCell::new(rel)))
-                    }
-                    _ => Err(ExecutionError::ExecutionError(
-                        "Limit only support positive integer literals".to_string(),
-                    )),
-                }
-            }
-
-            LogicalPlan::CreateExternalTable {
-                ref schema,
-                ref name,
-                ref location,
-                ref file_type,
-                ref header_row,
-            } => {
-                match file_type {
-                    FileType::CSV => {
-                        self.register_csv(name, location, schema, *header_row)
-                    }
-                    _ => {
-                        return Err(ExecutionError::ExecutionError(format!(
-                            "Unsupported file type {:?}.",
-                            file_type
-                        )));
-                    }
-                }
-                let mut builder = BooleanBuilder::new(1);
-                builder.append_value(true)?;
-
-                let columns = vec![Arc::new(builder.finish()) as ArrayRef];
-                Ok(Rc::new(RefCell::new(ScalarRelation::new(
-                    Arc::new(Schema::new(vec![Field::new(
-                        "result",
-                        DataType::Boolean,
-                        false,
-                    )])),
-                    columns,
-                ))))
-            }
-
-            _ => Err(ExecutionError::NotImplemented(
-                "Unsupported logical plan for execution".to_string(),
-            )),
-        }
-    }
 }
 
 struct ExecutionContextSchemaProvider {
