@@ -255,147 +255,126 @@ mod tests {
 
     use super::*;
     use crate::logicalplan::Expr::*;
-    use crate::logicalplan::LogicalPlan::*;
     use arrow::datatypes::{DataType, Field, Schema};
-    use std::borrow::Borrow;
     use std::sync::Arc;
 
     #[test]
-    fn aggregate_no_group_by() {
-        let table_scan = test_table_scan();
+    fn aggregate_no_group_by() -> Result<()> {
+        let table_scan = test_table_scan()?;
 
-        let aggregate = Aggregate {
-            group_expr: vec![],
-            aggr_expr: vec![Column(1)],
-            schema: Arc::new(Schema::new(vec![Field::new(
-                "MAX(b)",
-                DataType::UInt32,
-                false,
-            )])),
-            input: Arc::new(table_scan),
-        };
+        let plan = LogicalPlanBuilder::from(&table_scan)
+            .aggregate(vec![], vec![Column(1)])? //TODO not valid aggregate query
+            .build()?;
 
-        assert_optimized_plan_eq(&aggregate, "Aggregate: groupBy=[[]], aggr=[[#0]]\n  TableScan: test projection=Some([1])");
+        let expected = "Aggregate: groupBy=[[]], aggr=[[#0]]\
+        \n  TableScan: test projection=Some([1])";
+
+        assert_optimized_plan_eq(&plan, expected);
+
+        Ok(())
     }
 
     #[test]
-    fn aggregate_group_by() {
-        let table_scan = test_table_scan();
+    fn aggregate_group_by() -> Result<()> {
+        let table_scan = test_table_scan()?;
 
-        let aggregate = Aggregate {
-            group_expr: vec![Column(2)],
-            aggr_expr: vec![Column(1)],
-            schema: Arc::new(Schema::new(vec![
-                Field::new("c", DataType::UInt32, false),
-                Field::new("MAX(b)", DataType::UInt32, false),
-            ])),
-            input: Arc::new(table_scan),
-        };
+        let plan = LogicalPlanBuilder::from(&table_scan)
+            .aggregate(vec![Column(2)], vec![Column(1)])?
+            .build()?;
 
-        assert_optimized_plan_eq(&aggregate, "Aggregate: groupBy=[[#1]], aggr=[[#0]]\n  TableScan: test projection=Some([1, 2])");
+        let expected = "Aggregate: groupBy=[[#1]], aggr=[[#0]]\
+        \n  TableScan: test projection=Some([1, 2])";
+
+        assert_optimized_plan_eq(&plan, expected);
+
+        Ok(())
     }
 
     #[test]
-    fn aggregate_no_group_by_with_selection() {
-        let table_scan = test_table_scan();
+    fn aggregate_no_group_by_with_selection() -> Result<()> {
+        let table_scan = test_table_scan()?;
 
-        let selection = Selection {
-            expr: Column(2),
-            input: Arc::new(table_scan),
-        };
+        let plan = LogicalPlanBuilder::from(&table_scan)
+            .filter(Column(2))?
+            .aggregate(vec![], vec![Column(1)])?
+            .build()?;
 
-        let aggregate = Aggregate {
-            group_expr: vec![],
-            aggr_expr: vec![Column(1)],
-            schema: Arc::new(Schema::new(vec![Field::new(
-                "MAX(b)",
-                DataType::UInt32,
-                false,
-            )])),
-            input: Arc::new(selection),
-        };
+        let expected = "Aggregate: groupBy=[[]], aggr=[[#0]]\
+        \n  Selection: #1\
+        \n    TableScan: test projection=Some([1, 2])";
 
-        assert_optimized_plan_eq(&aggregate, "Aggregate: groupBy=[[]], aggr=[[#0]]\n  Selection: #1\n    TableScan: test projection=Some([1, 2])");
+        assert_optimized_plan_eq(&plan, expected);
+
+        Ok(())
     }
 
     #[test]
-    fn cast() {
-        let table_scan = test_table_scan();
+    fn cast() -> Result<()> {
+        let table_scan = test_table_scan()?;
 
-        let projection = Projection {
-            expr: vec![Cast {
+        let projection = LogicalPlanBuilder::from(&table_scan)
+            .project(vec![Cast {
                 expr: Arc::new(Column(2)),
                 data_type: DataType::Float64,
-            }],
-            input: Arc::new(table_scan),
-            schema: Arc::new(Schema::new(vec![Field::new(
-                "CAST(c AS float)",
-                DataType::Float64,
-                false,
-            )])),
-        };
+            }])?
+            .build()?;
 
-        assert_optimized_plan_eq(
-            &projection,
-            "Projection: CAST(#0 AS Float64)\n  TableScan: test projection=Some([2])",
-        );
+        let expected = "Projection: CAST(#0 AS Float64)\
+        \n  TableScan: test projection=Some([2])";
+
+        assert_optimized_plan_eq(&projection, expected);
+
+        Ok(())
     }
 
     #[test]
-    fn table_scan_projected_schema() {
-        let table_scan = test_table_scan();
+    fn table_scan_projected_schema() -> Result<()> {
+        let table_scan = test_table_scan()?;
         assert_eq!(3, table_scan.schema().fields().len());
+        assert_fields_eq(&table_scan, vec!["a", "b", "c"]);
 
-        let projection = Projection {
-            expr: vec![Column(0), Column(1)],
-            input: Arc::new(table_scan),
-            schema: Arc::new(Schema::new(vec![
-                Field::new("a", DataType::UInt32, false),
-                Field::new("b", DataType::UInt32, false),
-            ])),
-        };
+        let plan = LogicalPlanBuilder::from(&table_scan)
+            .project(vec![Column(0), Column(1)])?
+            .build()?;
 
-        let optimized_plan = optimize(&projection);
+        assert_fields_eq(&plan, vec!["a", "b"]);
 
-        // check that table scan schema now contains 2 columns
-        match optimized_plan.as_ref().borrow() {
-            LogicalPlan::Projection { input, .. } => match input.as_ref().borrow() {
-                LogicalPlan::TableScan {
-                    ref projected_schema,
-                    ..
-                } => {
-                    assert_eq!(2, projected_schema.fields().len());
-                }
-                _ => assert!(false),
-            },
-            _ => assert!(false),
-        }
+        let expected = "Projection: #0, #1\
+        \n  TableScan: test projection=Some([0, 1])";
+
+        assert_optimized_plan_eq(&plan, expected);
+
+        Ok(())
+    }
+
+    fn assert_fields_eq(plan: &LogicalPlan, expected: Vec<&str>) {
+        let actual: Vec<String> = plan
+            .schema()
+            .fields()
+            .iter()
+            .map(|f| f.name().clone())
+            .collect();
+        assert_eq!(actual, expected);
     }
 
     fn assert_optimized_plan_eq(plan: &LogicalPlan, expected: &str) {
-        let optimized_plan = optimize(plan);
+        let optimized_plan = optimize(plan).expect("failed to optimize plan");
         let formatted_plan = format!("{:?}", optimized_plan);
         assert_eq!(formatted_plan, expected);
     }
 
-    fn optimize(plan: &LogicalPlan) -> Arc<LogicalPlan> {
+    fn optimize(plan: &LogicalPlan) -> Result<LogicalPlan> {
         let mut rule = ProjectionPushDown::new();
-        Arc::new(rule.optimize(plan).unwrap())
+        rule.optimize(plan)
     }
 
     /// all tests share a common table
-    fn test_table_scan() -> LogicalPlan {
-        let schema = Arc::new(Schema::new(vec![
+    fn test_table_scan() -> Result<LogicalPlan> {
+        let schema = Schema::new(vec![
             Field::new("a", DataType::UInt32, false),
             Field::new("b", DataType::UInt32, false),
             Field::new("c", DataType::UInt32, false),
-        ]));
-        TableScan {
-            schema_name: "default".to_string(),
-            table_name: "test".to_string(),
-            table_schema: schema.clone(),
-            projected_schema: schema,
-            projection: None,
-        }
+        ]);
+        LogicalPlanBuilder::scan("default", "test", &schema, None)?.build()
     }
 }
