@@ -47,6 +47,7 @@ use crate::execution::table_impl::TableImpl;
 use crate::logicalplan::*;
 use crate::optimizer::optimizer::OptimizerRule;
 use crate::optimizer::projection_push_down::ProjectionPushDown;
+use crate::optimizer::resolve_columns::ResolveColumnsRule;
 use crate::optimizer::type_coercion::TypeCoercionRule;
 use crate::sql::parser::{DFASTNode, DFParser, FileType};
 use crate::sql::planner::{SchemaProvider, SqlToRel};
@@ -233,6 +234,7 @@ impl ExecutionContext {
     /// Optimize the logical plan by applying optimizer rules
     pub fn optimize(&self, plan: &LogicalPlan) -> Result<Arc<LogicalPlan>> {
         let rules: Vec<Box<dyn OptimizerRule>> = vec![
+            Box::new(ResolveColumnsRule::new()),
             Box::new(ProjectionPushDown::new()),
             Box::new(TypeCoercionRule::new()),
         ];

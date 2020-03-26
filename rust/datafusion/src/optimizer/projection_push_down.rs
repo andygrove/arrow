@@ -234,6 +234,9 @@ impl ProjectionPushDown {
                 name.clone(),
             )),
             Expr::Column(i) => Ok(Expr::Column(self.new_index(mapping, i)?)),
+            Expr::UnresolvedColumn(_) => Err(ExecutionError::ExecutionError(
+                "Columns need to be resolved before this rule can run".to_owned(),
+            )),
             Expr::Literal(_) => Ok(expr.clone()),
             Expr::Not(e) => Ok(Expr::Not(Arc::new(self.rewrite_expr(e, mapping)?))),
             Expr::IsNull(e) => Ok(Expr::IsNull(Arc::new(self.rewrite_expr(e, mapping)?))),

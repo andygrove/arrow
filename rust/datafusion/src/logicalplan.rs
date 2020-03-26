@@ -183,6 +183,8 @@ pub enum Expr {
     Alias(Arc<Expr>, String),
     /// index into a value within the row or complex value
     Column(usize),
+    /// Reference to column by name
+    UnresolvedColumn(String),
     /// literal value
     Literal(ScalarValue),
     /// binary expression e.g. "age > 21"
@@ -380,6 +382,7 @@ impl fmt::Debug for Expr {
         match self {
             Expr::Alias(expr, alias) => write!(f, "{:?} AS {}", expr, alias),
             Expr::Column(i) => write!(f, "#{}", i),
+            Expr::UnresolvedColumn(name) => write!(f, "#{}", name),
             Expr::Literal(v) => write!(f, "{:?}", v),
             Expr::Cast { expr, data_type } => {
                 write!(f, "CAST({:?} AS {:?})", expr, data_type)
