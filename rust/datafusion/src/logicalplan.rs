@@ -244,6 +244,9 @@ impl Expr {
         match self {
             Expr::Alias(expr, _) => expr.get_type(schema),
             Expr::Column(n) => Ok(schema.field(*n).data_type().clone()),
+            Expr::UnresolvedColumn(name) => {
+                Ok(schema.field_with_name(&name)?.data_type().clone())
+            }
             Expr::Literal(l) => Ok(l.get_datatype()),
             Expr::Cast { data_type, .. } => Ok(data_type.clone()),
             Expr::ScalarFunction { return_type, .. } => Ok(return_type.clone()),
