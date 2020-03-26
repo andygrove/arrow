@@ -19,8 +19,8 @@
 //! loaded into memory
 
 use crate::error::{ExecutionError, Result};
-use crate::logicalplan::Expr;
 use crate::logicalplan::LogicalPlan;
+use crate::logicalplan::{Expr, LogicalPlanBuilder};
 use crate::optimizer::optimizer::OptimizerRule;
 use crate::optimizer::utils;
 use arrow::datatypes::{Field, Schema};
@@ -32,7 +32,7 @@ use std::sync::Arc;
 pub struct ProjectionPushDown {}
 
 impl OptimizerRule for ProjectionPushDown {
-    fn optimize(&mut self, plan: &LogicalPlan) -> Result<Arc<LogicalPlan>> {
+    fn optimize(&mut self, plan: &LogicalPlan) -> Result<LogicalPlan> {
         let mut accum: HashSet<usize> = HashSet::new();
         let mut mapping: HashMap<usize, usize> = HashMap::new();
         self.optimize_plan(plan, &mut accum, &mut mapping)
@@ -50,92 +50,52 @@ impl ProjectionPushDown {
         plan: &LogicalPlan,
         accum: &mut HashSet<usize>,
         mapping: &mut HashMap<usize, usize>,
-    ) -> Result<Arc<LogicalPlan>> {
+    ) -> Result<LogicalPlan> {
         match plan {
-            LogicalPlan::Projection {
-                expr,
-                input,
-                schema,
-            } => {
+            LogicalPlan::Projection { expr, input, .. } => {
                 // collect all columns referenced by projection expressions
                 utils::exprlist_to_column_indices(&expr, accum)?;
 
-                // push projection down
-                let input = self.optimize_plan(&input, accum, mapping)?;
-
-                // rewrite projection expressions to use new column indexes
-                let new_expr = self.rewrite_exprs(expr, mapping)?;
-
-                Ok(Arc::new(LogicalPlan::Projection {
-                    expr: new_expr,
-                    input,
-                    schema: schema.clone(),
-                }))
+                LogicalPlanBuilder::from(&self.optimize_plan(&input, accum, mapping)?)
+                    .project(self.rewrite_expr_list(expr, mapping)?)?
+                    .build()
             }
             LogicalPlan::Selection { expr, input } => {
                 // collect all columns referenced by filter expression
                 utils::expr_to_column_indices(expr, accum)?;
 
-                // push projection down
-                let input = self.optimize_plan(&input, accum, mapping)?;
-
-                // rewrite filter expression to use new column indexes
-                let new_expr = self.rewrite_expr(expr, mapping)?;
-
-                Ok(Arc::new(LogicalPlan::Selection {
-                    expr: new_expr,
-                    input,
-                }))
+                LogicalPlanBuilder::from(&self.optimize_plan(&input, accum, mapping)?)
+                    .filter(self.rewrite_expr(expr, mapping)?)?
+                    .build()
             }
             LogicalPlan::Aggregate {
                 input,
                 group_expr,
                 aggr_expr,
-                schema,
+                ..
             } => {
                 // collect all columns referenced by grouping and aggregate expressions
                 utils::exprlist_to_column_indices(&group_expr, accum)?;
                 utils::exprlist_to_column_indices(&aggr_expr, accum)?;
 
-                // push projection down
-                let input = self.optimize_plan(&input, accum, mapping)?;
-
-                // rewrite expressions to use new column indexes
-                let new_group_expr = self.rewrite_exprs(group_expr, mapping)?;
-                let new_aggr_expr = self.rewrite_exprs(aggr_expr, mapping)?;
-
-                Ok(Arc::new(LogicalPlan::Aggregate {
-                    input,
-                    group_expr: new_group_expr,
-                    aggr_expr: new_aggr_expr,
-                    schema: schema.clone(),
-                }))
+                LogicalPlanBuilder::from(&self.optimize_plan(&input, accum, mapping)?)
+                    .aggregate(
+                        self.rewrite_expr_list(group_expr, mapping)?,
+                        self.rewrite_expr_list(aggr_expr, mapping)?,
+                    )?
+                    .build()
             }
-            LogicalPlan::Sort {
-                expr,
-                input,
-                schema,
-            } => {
+            LogicalPlan::Sort { expr, input, .. } => {
                 // collect all columns referenced by sort expressions
                 utils::exprlist_to_column_indices(&expr, accum)?;
 
-                // push projection down
-                let input = self.optimize_plan(&input, accum, mapping)?;
-
-                // rewrite sort expressions to use new column indexes
-                let new_expr = self.rewrite_exprs(expr, mapping)?;
-
-                Ok(Arc::new(LogicalPlan::Sort {
-                    expr: new_expr,
-                    input,
-                    schema: schema.clone(),
-                }))
+                LogicalPlanBuilder::from(&self.optimize_plan(&input, accum, mapping)?)
+                    .sort(self.rewrite_expr_list(expr, mapping)?)?
+                    .build()
             }
-            LogicalPlan::EmptyRelation { schema } => {
-                Ok(Arc::new(LogicalPlan::EmptyRelation {
-                    schema: schema.clone(),
-                }))
-            }
+            LogicalPlan::EmptyRelation { schema } => Ok(LogicalPlan::EmptyRelation {
+                schema: schema.clone(),
+            }),
             LogicalPlan::TableScan {
                 schema_name,
                 table_name,
@@ -183,40 +143,40 @@ impl ProjectionPushDown {
                 }
 
                 // return the table scan with projection
-                Ok(Arc::new(LogicalPlan::TableScan {
+                Ok(LogicalPlan::TableScan {
                     schema_name: schema_name.to_string(),
                     table_name: table_name.to_string(),
                     table_schema: table_schema.clone(),
                     projected_schema: Arc::new(projected_schema),
                     projection: Some(projection),
-                }))
+                })
             }
             LogicalPlan::Limit {
                 expr,
                 input,
                 schema,
-            } => Ok(Arc::new(LogicalPlan::Limit {
+            } => Ok(LogicalPlan::Limit {
                 expr: expr.clone(),
                 input: input.clone(),
                 schema: schema.clone(),
-            })),
+            }),
             LogicalPlan::CreateExternalTable {
                 schema,
                 name,
                 location,
                 file_type,
                 header_row,
-            } => Ok(Arc::new(LogicalPlan::CreateExternalTable {
+            } => Ok(LogicalPlan::CreateExternalTable {
                 schema: schema.clone(),
                 name: name.to_string(),
                 location: location.to_string(),
                 file_type: file_type.clone(),
                 header_row: *header_row,
-            })),
+            }),
         }
     }
 
-    fn rewrite_exprs(
+    fn rewrite_expr_list(
         &self,
         expr: &Vec<Expr>,
         mapping: &HashMap<usize, usize>,
@@ -262,7 +222,7 @@ impl ProjectionPushDown {
                 return_type,
             } => Ok(Expr::AggregateFunction {
                 name: name.to_string(),
-                args: self.rewrite_exprs(args, mapping)?,
+                args: self.rewrite_expr_list(args, mapping)?,
                 return_type: return_type.clone(),
             }),
             Expr::ScalarFunction {
@@ -271,7 +231,7 @@ impl ProjectionPushDown {
                 return_type,
             } => Ok(Expr::ScalarFunction {
                 name: name.to_string(),
-                args: self.rewrite_exprs(args, mapping)?,
+                args: self.rewrite_expr_list(args, mapping)?,
                 return_type: return_type.clone(),
             }),
             Expr::Wildcard => Err(ExecutionError::General(
@@ -420,7 +380,7 @@ mod tests {
 
     fn optimize(plan: &LogicalPlan) -> Arc<LogicalPlan> {
         let mut rule = ProjectionPushDown::new();
-        rule.optimize(plan).unwrap()
+        Arc::new(rule.optimize(plan).unwrap())
     }
 
     /// all tests share a common table

@@ -238,11 +238,11 @@ impl ExecutionContext {
             Box::new(ProjectionPushDown::new()),
             Box::new(TypeCoercionRule::new()),
         ];
-        let mut plan = Arc::new(plan.clone());
+        let mut plan = plan.clone();
         for mut rule in rules {
             plan = rule.optimize(&plan)?;
         }
-        Ok(plan)
+        Ok(Arc::new(plan))
     }
 
     /// Create a physical plan from a logical plan

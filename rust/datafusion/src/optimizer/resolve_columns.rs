@@ -35,37 +35,31 @@ impl ResolveColumnsRule {
 }
 
 impl OptimizerRule for ResolveColumnsRule {
-    fn optimize(&mut self, plan: &LogicalPlan) -> Result<Arc<LogicalPlan>> {
+    fn optimize(&mut self, plan: &LogicalPlan) -> Result<LogicalPlan> {
         match plan {
-            LogicalPlan::Projection { input, expr, .. } => Ok(Arc::new(
-                LogicalPlanBuilder::from(input)
+            LogicalPlan::Projection { input, expr, .. } => {
+                Ok(LogicalPlanBuilder::from(&self.optimize(input.as_ref())?)
                     .project(rewrite_expr_list(expr, &input.schema())?)?
-                    .build()?,
-            )),
-            LogicalPlan::Selection { expr, input } => Ok(Arc::new(
-                LogicalPlanBuilder::from(input)
-                    .filter(rewrite_expr(expr, &input.schema())?)?
-                    .build()?,
-            )),
+                    .build()?)
+            }
+            LogicalPlan::Selection { expr, input } => Ok(LogicalPlanBuilder::from(input)
+                .filter(rewrite_expr(expr, &input.schema())?)?
+                .build()?),
             LogicalPlan::Aggregate {
                 input,
                 group_expr,
                 aggr_expr,
                 ..
-            } => Ok(Arc::new(
-                LogicalPlanBuilder::from(input)
-                    .aggregate(
-                        rewrite_expr_list(group_expr, &input.schema())?,
-                        rewrite_expr_list(aggr_expr, &input.schema())?,
-                    )?
-                    .build()?,
-            )),
-            LogicalPlan::Sort { input, expr, .. } => Ok(Arc::new(
-                LogicalPlanBuilder::from(input)
-                    .sort(rewrite_expr_list(expr, &input.schema())?)?
-                    .build()?,
-            )),
-            _ => Ok(Arc::new(plan.clone())),
+            } => Ok(LogicalPlanBuilder::from(input)
+                .aggregate(
+                    rewrite_expr_list(group_expr, &input.schema())?,
+                    rewrite_expr_list(aggr_expr, &input.schema())?,
+                )?
+                .build()?),
+            LogicalPlan::Sort { input, expr, .. } => Ok(LogicalPlanBuilder::from(input)
+                .sort(rewrite_expr_list(expr, &input.schema())?)?
+                .build()?),
+            _ => Ok(plan.clone()),
         }
     }
 }
