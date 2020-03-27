@@ -255,7 +255,8 @@ mod tests {
 
     use super::*;
     use crate::logicalplan::Expr::*;
-    use arrow::datatypes::{DataType, Field, Schema};
+    use crate::test::*;
+    use arrow::datatypes::DataType;
     use std::sync::Arc;
 
     #[test]
@@ -263,10 +264,10 @@ mod tests {
         let table_scan = test_table_scan()?;
 
         let plan = LogicalPlanBuilder::from(&table_scan)
-            .aggregate(vec![], vec![Column(1)])? //TODO not valid aggregate query
+            .aggregate(vec![], vec![max(Column(1))])?
             .build()?;
 
-        let expected = "Aggregate: groupBy=[[]], aggr=[[#0]]\
+        let expected = "Aggregate: groupBy=[[]], aggr=[[MAX(#0)]]\
         \n  TableScan: test projection=Some([1])";
 
         assert_optimized_plan_eq(&plan, expected);
@@ -279,10 +280,10 @@ mod tests {
         let table_scan = test_table_scan()?;
 
         let plan = LogicalPlanBuilder::from(&table_scan)
-            .aggregate(vec![Column(2)], vec![Column(1)])?
+            .aggregate(vec![Column(2)], vec![max(Column(1))])?
             .build()?;
 
-        let expected = "Aggregate: groupBy=[[#1]], aggr=[[#0]]\
+        let expected = "Aggregate: groupBy=[[#1]], aggr=[[MAX(#0)]]\
         \n  TableScan: test projection=Some([1, 2])";
 
         assert_optimized_plan_eq(&plan, expected);
@@ -296,10 +297,10 @@ mod tests {
 
         let plan = LogicalPlanBuilder::from(&table_scan)
             .filter(Column(2))?
-            .aggregate(vec![], vec![Column(1)])?
+            .aggregate(vec![], vec![max(Column(1))])?
             .build()?;
 
-        let expected = "Aggregate: groupBy=[[]], aggr=[[#0]]\
+        let expected = "Aggregate: groupBy=[[]], aggr=[[MAX(#0)]]\
         \n  Selection: #1\
         \n    TableScan: test projection=Some([1, 2])";
 
@@ -347,16 +348,6 @@ mod tests {
         Ok(())
     }
 
-    fn assert_fields_eq(plan: &LogicalPlan, expected: Vec<&str>) {
-        let actual: Vec<String> = plan
-            .schema()
-            .fields()
-            .iter()
-            .map(|f| f.name().clone())
-            .collect();
-        assert_eq!(actual, expected);
-    }
-
     fn assert_optimized_plan_eq(plan: &LogicalPlan, expected: &str) {
         let optimized_plan = optimize(plan).expect("failed to optimize plan");
         let formatted_plan = format!("{:?}", optimized_plan);
@@ -366,15 +357,5 @@ mod tests {
     fn optimize(plan: &LogicalPlan) -> Result<LogicalPlan> {
         let mut rule = ProjectionPushDown::new();
         rule.optimize(plan)
-    }
-
-    /// all tests share a common table
-    fn test_table_scan() -> Result<LogicalPlan> {
-        let schema = Schema::new(vec![
-            Field::new("a", DataType::UInt32, false),
-            Field::new("b", DataType::UInt32, false),
-            Field::new("c", DataType::UInt32, false),
-        ]);
-        LogicalPlanBuilder::scan("default", "test", &schema, None)?.build()
     }
 }

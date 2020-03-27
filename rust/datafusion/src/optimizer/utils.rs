@@ -76,6 +76,7 @@ pub fn expr_to_field(e: &Expr, input_schema: &Schema) -> Result<Field> {
         Expr::Alias(expr, name) => {
             Ok(Field::new(name, expr.get_type(input_schema)?, true))
         }
+        Expr::UnresolvedColumn(name) => Ok(input_schema.field_with_name(&name)?.clone()),
         Expr::Column(i) => {
             let input_schema_field_count = input_schema.fields().len();
             if *i < input_schema_field_count {

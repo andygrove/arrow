@@ -113,3 +113,43 @@ fn rewrite_expr(expr: &Expr, schema: &Schema) -> Result<Expr> {
         _ => Ok(expr.clone()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test::*;
+
+    #[test]
+    fn aggregate_no_group_by() -> Result<()> {
+        let table_scan = test_table_scan()?;
+
+        let plan = LogicalPlanBuilder::from(&table_scan)
+            .aggregate(vec![col("a")], vec![max(col("b"))])?
+            .build()?;
+
+        // plan has unresolve columns
+        let expected = "Aggregate: groupBy=[[#a]], aggr=[[MAX(#b)]]\n  TableScan: test projection=None";
+        assert_eq!(format!("{:?}", plan), expected);
+
+        // optimized plan has resolved columns
+        let expected = "Aggregate: groupBy=[[#0]], aggr=[[MAX(#1)]]\n  TableScan: test projection=None";
+        assert_optimized_plan_eq(&plan, expected);
+
+        Ok(())
+    }
+
+    fn col(name: &str) -> Expr {
+        Expr::UnresolvedColumn(name.to_owned())
+    }
+
+    fn assert_optimized_plan_eq(plan: &LogicalPlan, expected: &str) {
+        let optimized_plan = optimize(plan).expect("failed to optimize plan");
+        let formatted_plan = format!("{:?}", optimized_plan);
+        assert_eq!(formatted_plan, expected);
+    }
+
+    fn optimize(plan: &LogicalPlan) -> Result<LogicalPlan> {
+        let mut rule = ResolveColumnsRule::new();
+        rule.optimize(plan)
+    }
+}
