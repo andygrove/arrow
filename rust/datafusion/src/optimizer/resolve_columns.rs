@@ -72,13 +72,44 @@ fn rewrite_expr_list(expr: &Vec<Expr>, schema: &Schema) -> Result<Vec<Expr>> {
 
 fn rewrite_expr(expr: &Expr, schema: &Schema) -> Result<Expr> {
     match expr {
+        Expr::Alias(expr, alias) => Ok(rewrite_expr(&expr, schema)?.alias(&alias)),
         Expr::UnresolvedColumn(name) => Ok(Expr::Column(schema.index_of(&name)?)),
         Expr::BinaryExpr { left, op, right } => Ok(Expr::BinaryExpr {
             left: Arc::new(rewrite_expr(&left, schema)?),
             op: op.clone(),
             right: Arc::new(rewrite_expr(&right, schema)?),
         }),
-        //TODO recurse into other expr
+        Expr::Not(expr) => Ok(Expr::Not(Arc::new(rewrite_expr(&expr, schema)?))),
+        Expr::IsNotNull(expr) => {
+            Ok(Expr::IsNotNull(Arc::new(rewrite_expr(&expr, schema)?)))
+        }
+        Expr::IsNull(expr) => Ok(Expr::IsNull(Arc::new(rewrite_expr(&expr, schema)?))),
+        Expr::Cast { expr, data_type } => Ok(Expr::Cast {
+            expr: Arc::new(rewrite_expr(&expr, schema)?),
+            data_type: data_type.clone(),
+        }),
+        Expr::Sort { expr, asc } => Ok(Expr::Sort {
+            expr: Arc::new(rewrite_expr(&expr, schema)?),
+            asc: asc.clone(),
+        }),
+        Expr::ScalarFunction {
+            name,
+            args,
+            return_type,
+        } => Ok(Expr::ScalarFunction {
+            name: name.clone(),
+            args: rewrite_expr_list(args, schema)?,
+            return_type: return_type.clone(),
+        }),
+        Expr::AggregateFunction {
+            name,
+            args,
+            return_type,
+        } => Ok(Expr::AggregateFunction {
+            name: name.clone(),
+            args: rewrite_expr_list(args, schema)?,
+            return_type: return_type.clone(),
+        }),
         _ => Ok(expr.clone()),
     }
 }
