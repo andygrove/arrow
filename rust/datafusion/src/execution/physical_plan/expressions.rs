@@ -22,6 +22,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::error::{ExecutionError, Result};
+use crate::execution::context::ScalarFunction;
 use crate::execution::physical_plan::common::get_scalar_value;
 use crate::execution::physical_plan::{Accumulator, AggregateExpr, PhysicalExpr};
 use crate::logicalplan::{Operator, ScalarValue};
@@ -1184,6 +1185,27 @@ impl PhysicalExpr for CastExpr {
     fn evaluate(&self, batch: &RecordBatch) -> Result<ArrayRef> {
         let value = self.expr.evaluate(batch)?;
         Ok(cast(&value, &self.cast_type)?)
+    }
+}
+
+pub struct ScalarFunctionExpr {
+    pub name: String,
+    pub f: Box<ScalarFunction>,
+    pub args: Vec<Arc<dyn PhysicalExpr>>,
+    pub return_type: DataType,
+}
+
+impl PhysicalExpr for ScalarFunctionExpr {
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
+        Ok(self.return_type.clone())
+    }
+
+    fn evaluate(&self, batch: &RecordBatch) -> Result<ArrayRef> {
+        (self.f)(batch)
     }
 }
 

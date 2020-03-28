@@ -35,7 +35,8 @@ use crate::error::{ExecutionError, Result};
 use crate::execution::physical_plan::common;
 use crate::execution::physical_plan::datasource::DatasourceExec;
 use crate::execution::physical_plan::expressions::{
-    Alias, Avg, BinaryExpr, CastExpr, Column, Count, Literal, Max, Min, Sum,
+    Alias, Avg, BinaryExpr, CastExpr, Column, Count, Literal, Max, Min,
+    ScalarFunctionExpr, Sum,
 };
 use crate::execution::physical_plan::hash_aggregate::HashAggregateExec;
 use crate::execution::physical_plan::limit::LimitExec;
@@ -51,11 +52,15 @@ use crate::optimizer::type_coercion::TypeCoercionRule;
 use crate::sql::parser::{DFASTNode, DFParser, FileType};
 use crate::sql::planner::{SchemaProvider, SqlToRel};
 use crate::table::Table;
+use arrow::array::ArrayRef;
 use sqlparser::sqlast::{SQLColumnDef, SQLType};
+
+pub type ScalarFunction = fn(input: &RecordBatch) -> Result<ArrayRef>;
 
 /// Execution context for registering data sources and executing queries
 pub struct ExecutionContext {
     datasources: HashMap<String, Box<dyn TableProvider>>,
+    scalar_functions: HashMap<String, Box<ScalarFunction>>,
 }
 
 impl ExecutionContext {
@@ -63,6 +68,7 @@ impl ExecutionContext {
     pub fn new() -> Self {
         Self {
             datasources: HashMap::new(),
+            scalar_functions: HashMap::new(),
         }
     }
 
@@ -147,6 +153,10 @@ impl ExecutionContext {
                 })
             }
         }
+    }
+
+    pub fn register_udf(&mut self, name: &str, f: ScalarFunction) {
+        self.scalar_functions.insert(name.to_owned(), Box::new(f));
     }
 
     fn build_schema(&self, columns: Vec<SQLColumnDef>) -> Result<Schema> {
@@ -398,6 +408,22 @@ impl ExecutionContext {
                 input_schema,
                 data_type.clone(),
             )?)),
+            Expr::ScalarFunction {
+                name,
+                args,
+                return_type,
+            } => {
+                let mut x = vec![];
+                for e in args {
+                    x.push(self.create_physical_expr(e, input_schema)?);
+                }
+                Ok(Arc::new(ScalarFunctionExpr {
+                    name: name.to_owned(),
+                    f: self.scalar_functions[name].clone(),
+                    args: x,
+                    return_type: return_type.clone(),
+                }))
+            }
             other => Err(ExecutionError::NotImplemented(format!(
                 "Physical plan does not support logical expression {:?}",
                 other
@@ -529,7 +555,10 @@ impl SchemaProvider for ExecutionContextSchemaProvider<'_> {
 mod tests {
 
     use super::*;
+    use crate::datasource::MemTable;
     use crate::test;
+    use arrow::array::Int32Array;
+    use arrow::compute::add;
     use std::fs::File;
     use std::io::prelude::*;
     use tempdir::TempDir;
@@ -799,6 +828,69 @@ mod tests {
         assert_eq!(part2_count, 10);
         assert_eq!(part3_count, 10);
         assert_eq!(allparts_count, 40);
+
+        Ok(())
+    }
+
+    #[test]
+    fn scalar_udf() -> Result<()> {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("a", DataType::Int32, false),
+            Field::new("b", DataType::Int32, false),
+        ]));
+
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int32Array::from(vec![1, 10, 10, 100])),
+                Arc::new(Int32Array::from(vec![2, 12, 12, 120])),
+            ],
+        )?;
+
+        let mut ctx = ExecutionContext::new();
+
+        let provider = MemTable::new(schema, vec![batch]).unwrap();
+        ctx.register_table("t", Box::new(provider));
+
+        let myfunc: ScalarFunction = |batch: &RecordBatch| {
+            let l = &batch.columns()[0]
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .expect("cast failed");
+            let r = &batch.columns()[1]
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .expect("cast failed");
+            println!("Running my_add");
+            Ok(Arc::new(add(l, r).unwrap()))
+        };
+
+        ctx.register_udf("my_add", myfunc);
+
+        let t = ctx.table("t").unwrap();
+
+        let plan = LogicalPlanBuilder::from(t.to_logical_plan().as_ref())
+            .project(vec![
+                col(0),
+                col(1),
+                scalar_function("my_add", vec![col(0), col(1)], DataType::Int32),
+            ])?
+            .build()?;
+
+        assert_eq!(
+            format!("{:?}", plan),
+            "Projection: #0, #1, my_add(#0, #1)\n  TableScan: t projection=None"
+        );
+
+        let plan = ctx.optimize(&plan)?;
+        let plan = ctx.create_physical_plan(&plan, 1024)?;
+        let result = ctx.collect(plan.as_ref())?;
+
+        let batch = &result[0];
+        assert_eq!(3, batch.num_columns());
+        assert_eq!(4, batch.num_rows());
+
+        //TODO assert correct results
 
         Ok(())
     }
