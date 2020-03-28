@@ -55,6 +55,7 @@ use crate::table::Table;
 use arrow::array::ArrayRef;
 use sqlparser::sqlast::{SQLColumnDef, SQLType};
 
+/// Scalar UDF
 pub type ScalarFunction = fn(input: &RecordBatch) -> Result<ArrayRef>;
 
 /// Execution context for registering data sources and executing queries
@@ -155,6 +156,7 @@ impl ExecutionContext {
         }
     }
 
+    /// Register a scalar UDF
     pub fn register_udf(&mut self, name: &str, f: ScalarFunction) {
         self.scalar_functions.insert(name.to_owned(), Box::new(f));
     }
@@ -413,16 +415,17 @@ impl ExecutionContext {
                 args,
                 return_type,
             } => {
-                let mut x = vec![];
+                let mut physical_args = vec![];
                 for e in args {
-                    x.push(self.create_physical_expr(e, input_schema)?);
+                    physical_args.push(self.create_physical_expr(e, input_schema)?);
                 }
-                Ok(Arc::new(ScalarFunctionExpr {
-                    name: name.to_owned(),
-                    f: self.scalar_functions[name].clone(),
-                    args: x,
-                    return_type: return_type.clone(),
-                }))
+                //TODO pass refs not clone
+                Ok(Arc::new(ScalarFunctionExpr::new(
+                    name.to_owned(),
+                    self.scalar_functions[name].clone(),
+                    physical_args,
+                    return_type.clone(),
+                )))
             }
             other => Err(ExecutionError::NotImplemented(format!(
                 "Physical plan does not support logical expression {:?}",

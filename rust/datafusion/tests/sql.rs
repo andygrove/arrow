@@ -145,6 +145,35 @@ fn csv_query_group_by_int_min_max() {
 }
 
 #[test]
+fn csv_query_avg_sqrt() -> Result<()> {
+    let mut ctx = create_ctx()?;
+    register_aggregate_csv(&mut ctx);
+    let sql = "SELECT avg(sqrt(c12)) FROM aggregate_test_100";
+    let mut actual = execute(&mut ctx, sql);
+    actual.sort();
+    let expected = "0.5089725099127211".to_string();
+    assert_eq!(expected, actual.join("\n"));
+    Ok(())
+}
+
+fn create_ctx() -> Result<ExecutionContext> {
+    let mut ctx = ExecutionContext::new();
+    ctx.register_udf("sqrt", |batch: &RecordBatch| {
+        let input = &batch.columns()[0]
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .expect("cast failed");
+
+        let mut builder = Float64Builder::new(input.len());
+        for i in 0..input.len() {
+            builder.append_value(input.value(i).sqrt())?;
+        }
+        Ok(Arc::new(builder.finish()))
+    });
+    Ok(ctx)
+}
+
+#[test]
 fn csv_query_avg() {
     let mut ctx = ExecutionContext::new();
     register_aggregate_csv(&mut ctx);
