@@ -55,9 +55,6 @@ use crate::table::Table;
 use arrow::array::ArrayRef;
 use sqlparser::sqlast::{SQLColumnDef, SQLType};
 
-/// Scalar UDF
-pub type ScalarFunction = fn(input: &Vec<ArrayRef>) -> Result<ArrayRef>;
-
 /// Execution context for registering data sources and executing queries
 pub struct ExecutionContext {
     datasources: HashMap<String, Box<dyn TableProvider>>,
@@ -126,6 +123,7 @@ impl ExecutionContext {
             DFASTNode::ANSI(ansi) => {
                 let schema_provider = ExecutionContextSchemaProvider {
                     datasources: &self.datasources,
+                    scalar_functions: &self.scalar_functions,
                 };
 
                 // create a query planner
@@ -542,6 +540,7 @@ impl ExecutionContext {
 
 struct ExecutionContextSchemaProvider<'a> {
     datasources: &'a HashMap<String, Box<dyn TableProvider>>,
+    scalar_functions: HashMap<String, Box<ScalarFunction>>,
 }
 
 impl SchemaProvider for ExecutionContextSchemaProvider<'_> {
@@ -549,8 +548,8 @@ impl SchemaProvider for ExecutionContextSchemaProvider<'_> {
         self.datasources.get(name).map(|ds| ds.schema().clone())
     }
 
-    fn get_function_meta(&self, _name: &str) -> Option<Arc<FunctionMeta>> {
-        None
+    fn get_function_meta(&self,_name: &str) -> Option<Arc<FunctionMeta>> {
+        self.scalar_functions.get(name).map(|f| f.meta())
     }
 }
 
@@ -867,6 +866,8 @@ mod tests {
             println!("Running my_add");
             Ok(Arc::new(add(l, r).unwrap()))
         };
+
+
 
         ctx.register_udf("my_add", myfunc);
 

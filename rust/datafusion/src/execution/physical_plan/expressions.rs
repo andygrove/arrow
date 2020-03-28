@@ -1188,30 +1188,6 @@ impl PhysicalExpr for CastExpr {
     }
 }
 
-/// Scalar UDF Expression
-pub struct ScalarFunctionExpr {
-    name: String,
-    f: Box<ScalarFunction>,
-    args: Vec<Arc<dyn PhysicalExpr>>,
-    return_type: DataType,
-}
-
-impl ScalarFunctionExpr {
-    /// Create a new Scalar function
-    pub fn new(
-        name: String,
-        f: Box<ScalarFunction>,
-        args: Vec<Arc<dyn PhysicalExpr>>,
-        return_type: DataType,
-    ) -> Self {
-        Self {
-            name,
-            f,
-            args,
-            return_type,
-        }
-    }
-}
 
 impl PhysicalExpr for ScalarFunctionExpr {
     fn name(&self) -> String {
