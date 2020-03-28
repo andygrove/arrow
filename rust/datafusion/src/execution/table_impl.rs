@@ -45,8 +45,10 @@ impl Table for TableImpl {
         let exprs = columns
             .iter()
             .map(|name| {
-                self.plan.schema().index_of(name.to_owned())
-                    .and_then(|i|Ok(Expr::Column(i)))
+                self.plan
+                    .schema()
+                    .index_of(name.to_owned())
+                    .and_then(|i| Ok(Expr::Column(i)))
                     .map_err(|e| e.into())
             })
             .collect::<Result<Vec<_>>>()?;
