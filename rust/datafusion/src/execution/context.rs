@@ -17,6 +17,7 @@
 
 //! ExecutionContext contains methods for registering data sources and executing queries
 
+use std::clone::Clone;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -35,14 +36,14 @@ use crate::error::{ExecutionError, Result};
 use crate::execution::physical_plan::common;
 use crate::execution::physical_plan::datasource::DatasourceExec;
 use crate::execution::physical_plan::expressions::{
-    Alias, Avg, BinaryExpr, CastExpr, Column, Count, Literal, Max, Min,
-    ScalarFunctionExpr, Sum,
+    Alias, Avg, BinaryExpr, CastExpr, Column, Count, Literal, Max, Min, Sum,
 };
 use crate::execution::physical_plan::hash_aggregate::HashAggregateExec;
 use crate::execution::physical_plan::limit::LimitExec;
 use crate::execution::physical_plan::merge::MergeExec;
 use crate::execution::physical_plan::projection::ProjectionExec;
 use crate::execution::physical_plan::selection::SelectionExec;
+use crate::execution::physical_plan::udf::{ScalarFunction, ScalarFunctionExpr};
 use crate::execution::physical_plan::{AggregateExpr, ExecutionPlan, PhysicalExpr};
 use crate::execution::table_impl::TableImpl;
 use crate::logicalplan::*;
@@ -52,7 +53,6 @@ use crate::optimizer::type_coercion::TypeCoercionRule;
 use crate::sql::parser::{DFASTNode, DFParser, FileType};
 use crate::sql::planner::{SchemaProvider, SqlToRel};
 use crate::table::Table;
-use arrow::array::ArrayRef;
 use sqlparser::sqlast::{SQLColumnDef, SQLType};
 
 /// Execution context for registering data sources and executing queries
@@ -413,17 +413,23 @@ impl ExecutionContext {
                 args,
                 return_type,
             } => {
-                let mut physical_args = vec![];
-                for e in args {
-                    physical_args.push(self.create_physical_expr(e, input_schema)?);
+                match &self.scalar_functions.get(name) {
+                    Some(f) => {
+                        let mut physical_args = vec![];
+                        for e in args {
+                            physical_args
+                                .push(self.create_physical_expr(e, input_schema)?);
+                        }
+                        //TODO pass refs not clone
+                        Ok(Arc::new(ScalarFunctionExpr::new(
+                            name.to_owned(),
+                            Box::new(f.fun.clone()),
+                            physical_args,
+                            return_type.clone(),
+                        )))
+                    }
+                    _ => panic!(),
                 }
-                //TODO pass refs not clone
-                Ok(Arc::new(ScalarFunctionExpr::new(
-                    name.to_owned(),
-                    self.scalar_functions[name].clone(),
-                    physical_args,
-                    return_type.clone(),
-                )))
             }
             other => Err(ExecutionError::NotImplemented(format!(
                 "Physical plan does not support logical expression {:?}",
@@ -540,7 +546,7 @@ impl ExecutionContext {
 
 struct ExecutionContextSchemaProvider<'a> {
     datasources: &'a HashMap<String, Box<dyn TableProvider>>,
-    scalar_functions: HashMap<String, Box<ScalarFunction>>,
+    scalar_functions: &'a HashMap<String, Box<ScalarFunction>>,
 }
 
 impl SchemaProvider for ExecutionContextSchemaProvider<'_> {
@@ -548,8 +554,15 @@ impl SchemaProvider for ExecutionContextSchemaProvider<'_> {
         self.datasources.get(name).map(|ds| ds.schema().clone())
     }
 
-    fn get_function_meta(&self,_name: &str) -> Option<Arc<FunctionMeta>> {
-        self.scalar_functions.get(name).map(|f| f.meta())
+    fn get_function_meta(&self, name: &str) -> Option<Arc<FunctionMeta>> {
+        self.scalar_functions.get(name).map(|f| {
+            Arc::new(FunctionMeta::new(
+                name.to_owned(),
+                f.args.clone(),
+                f.return_type.clone(),
+                FunctionType::Scalar,
+            ))
+        })
     }
 }
 
@@ -558,8 +571,9 @@ mod tests {
 
     use super::*;
     use crate::datasource::MemTable;
+    use crate::execution::physical_plan::udf::ScalarUdf;
     use crate::test;
-    use arrow::array::Int32Array;
+    use arrow::array::{ArrayRef, Int32Array};
     use arrow::compute::add;
     use std::fs::File;
     use std::io::prelude::*;
@@ -854,7 +868,7 @@ mod tests {
         let provider = MemTable::new(schema, vec![batch]).unwrap();
         ctx.register_table("t", Box::new(provider));
 
-        let myfunc: ScalarFunction = |args: &Vec<ArrayRef>| {
+        let myfunc: ScalarUdf = |args: &Vec<ArrayRef>| {
             let l = &args[0]
                 .as_any()
                 .downcast_ref::<Int32Array>()
@@ -867,9 +881,17 @@ mod tests {
             Ok(Arc::new(add(l, r).unwrap()))
         };
 
+        let def = ScalarFunction::new(
+            "my_add",
+            vec![
+                Field::new("a", DataType::Float64, true),
+                Field::new("b", DataType::Float64, true),
+            ],
+            DataType::Float64,
+            myfunc,
+        );
 
-
-        ctx.register_udf("my_add", myfunc);
+        ctx.register_udf("my_add", def);
 
         let t = ctx.table("t").unwrap();
 

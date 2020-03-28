@@ -27,6 +27,7 @@ use arrow::record_batch::RecordBatch;
 
 use datafusion::error::Result;
 use datafusion::execution::context::ExecutionContext;
+use datafusion::execution::physical_plan::udf::{ScalarFunction, ScalarUdf};
 use datafusion::logicalplan::LogicalPlan;
 
 const DEFAULT_BATCH_SIZE: usize = 1024 * 1024;
@@ -151,14 +152,15 @@ fn csv_query_avg_sqrt() -> Result<()> {
     let sql = "SELECT avg(sqrt(c12)) FROM aggregate_test_100";
     let mut actual = execute(&mut ctx, sql);
     actual.sort();
-    let expected = "0.5089725099127211".to_string();
-    assert_eq!(expected, actual.join("\n"));
+    let expected = "0.6706002946036462".to_string();
+    assert_eq!(actual.join("\n"), expected);
     Ok(())
 }
 
 fn create_ctx() -> Result<ExecutionContext> {
     let mut ctx = ExecutionContext::new();
-    ctx.register_udf("sqrt", |args: &Vec<ArrayRef>| {
+
+    let sqrt: ScalarUdf = |args: &Vec<ArrayRef>| {
         let input = &args[0]
             .as_any()
             .downcast_ref::<Float64Array>()
@@ -169,7 +171,16 @@ fn create_ctx() -> Result<ExecutionContext> {
             builder.append_value(input.value(i).sqrt())?;
         }
         Ok(Arc::new(builder.finish()))
-    });
+    };
+
+    let sqrt_meta = ScalarFunction::new(
+        "sqrt",
+        vec![Field::new("n", DataType::Float64, true)],
+        DataType::Float64,
+        sqrt,
+    );
+
+    ctx.register_udf("sqrt", sqrt_meta);
     Ok(ctx)
 }
 

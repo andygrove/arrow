@@ -18,36 +18,50 @@
 //! UDF support
 
 use arrow::array::ArrayRef;
-use arrow::datatypes::{Field, DataType};
+use arrow::datatypes::{DataType, Field, Schema};
 
 use crate::error::Result;
 use crate::execution::physical_plan::PhysicalExpr;
 
+use arrow::record_batch::RecordBatch;
 use std::sync::Arc;
 
 /// Scalar UDF
-pub type ScalarFunction = fn(input: &Vec<ArrayRef>) -> Result<ArrayRef>;
-
-pub struct ScalarFunctionFoo {
-    meta: ScalarFunctionMeta,
-    f: ScalarFunction
-}
-
-impl ScalarFunctionFoo {
-    pub fn meta() -> &ScalarFunctionMeta;
-}
+pub type ScalarUdf = fn(input: &Vec<ArrayRef>) -> Result<ArrayRef>;
 
 /// Scalar UDF Expression
-pub struct ScalarFunctionMeta {
-    name: String,
-    args: Vec<Field>,
-    return_type: DataType,
+#[derive(Clone)]
+pub struct ScalarFunction {
+    /// Function name
+    pub name: String,
+    /// Function argument meta-data
+    pub args: Vec<Field>,
+    /// Return type
+    pub return_type: DataType,
+    /// UDF implementation
+    pub fun: ScalarUdf,
 }
 
+impl ScalarFunction {
+    /// Create a new ScalarFunction
+    pub fn new(
+        name: &str,
+        args: Vec<Field>,
+        return_type: DataType,
+        fun: ScalarUdf,
+    ) -> Self {
+        Self {
+            name: name.to_owned(),
+            args,
+            return_type,
+            fun,
+        }
+    }
+}
 /// Scalar UDF Expression
 pub struct ScalarFunctionExpr {
     name: String,
-    f: Box<ScalarFunction>,
+    fun: Box<ScalarUdf>,
     args: Vec<Arc<dyn PhysicalExpr>>,
     return_type: DataType,
 }
@@ -56,15 +70,36 @@ impl ScalarFunctionExpr {
     /// Create a new Scalar function
     pub fn new(
         name: String,
-        f: Box<ScalarFunction>,
+        fun: Box<ScalarUdf>,
         args: Vec<Arc<dyn PhysicalExpr>>,
         return_type: DataType,
     ) -> Self {
         Self {
             name,
-            f,
+            fun,
             args,
             return_type,
         }
+    }
+}
+
+impl PhysicalExpr for ScalarFunctionExpr {
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
+        Ok(self.return_type.clone())
+    }
+
+    fn evaluate(&self, batch: &RecordBatch) -> Result<ArrayRef> {
+        let inputs = self
+            .args
+            .iter()
+            .map(|e| e.evaluate(batch))
+            .collect::<Result<Vec<_>>>()?;
+
+        let fun = self.fun.as_ref();
+        (fun)(&inputs)
     }
 }
