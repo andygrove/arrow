@@ -361,9 +361,14 @@ impl Expr {
     }
 }
 
-/// Create a column expression
-pub fn col(index: usize) -> Expr {
+/// Create a column expression based on a column index
+pub fn col_index(index: usize) -> Expr {
     Expr::Column(index)
+}
+
+/// Create a column expression based on a column name
+pub fn col(name: &str) -> Expr {
+    Expr::UnresolvedColumn(name.to_owned())
 }
 
 /// Create a literal string expression
@@ -715,7 +720,7 @@ impl LogicalPlanBuilder {
             (0..expr.len()).for_each(|i| match &expr[i] {
                 Expr::Wildcard => {
                     (0..input_schema.fields().len())
-                        .for_each(|i| expr_vec.push(col(i).clone()));
+                        .for_each(|i| expr_vec.push(col_index(i).clone()));
                 }
                 _ => expr_vec.push(expr[i].clone()),
             });
@@ -797,8 +802,8 @@ mod tests {
             &employee_schema(),
             Some(vec![0, 3]),
         )?
-        .filter(col(1).eq(&lit_str("CO")))?
-        .project(vec![col(0)])?
+        .filter(col("id").eq(&lit_str("CO")))?
+        .project(vec![col("id")])?
         .build()?;
 
         // prove that a plan can be passed to a thread
@@ -818,13 +823,13 @@ mod tests {
             &employee_schema(),
             Some(vec![0, 3]),
         )?
-        .filter(col(1).eq(&lit_str("CO")))?
-        .project(vec![col(0)])?
+        .filter(col("state").eq(&lit_str("CO")))?
+        .project(vec![col("id")])?
         .build()?;
 
-        let expected = "Projection: #0\n  \
-                        Selection: #1 Eq Utf8(\"CO\")\n    \
-                        TableScan: employee.csv projection=Some([0, 3])";
+        let expected = "Projection: #id\
+        \n  Selection: #state Eq Utf8(\"CO\")\
+        \n    TableScan: employee.csv projection=Some([0, 3])";
 
         assert_eq!(expected, format!("{:?}", plan));
 
@@ -840,15 +845,16 @@ mod tests {
             Some(vec![3, 4]),
         )?
         .aggregate(
-            vec![col(0)],
-            vec![aggregate_expr("SUM", col(1), DataType::Int32)],
+            vec![col("state")],
+            vec![aggregate_expr("SUM", col("salary"), DataType::Int32)
+                .alias("total_salary")],
         )?
-        .project(vec![col(0), col(1).alias("total_salary")])?
+        .project(vec![col("state"), col("total_salary")])?
         .build()?;
 
-        let expected = "Projection: #0, #1 AS total_salary\
-                        \n  Aggregate: groupBy=[[#0]], aggr=[[SUM(#1)]]\
-                        \n    TableScan: employee.csv projection=Some([3, 4])";
+        let expected = "Projection: #state, #total_salary\
+        \n  Aggregate: groupBy=[[#state]], aggr=[[SUM(#salary) AS total_salary]]\
+        \n    TableScan: employee.csv projection=Some([3, 4])";
 
         assert_eq!(expected, format!("{:?}", plan));
 

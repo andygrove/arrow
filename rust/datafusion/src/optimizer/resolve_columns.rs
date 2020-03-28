@@ -117,6 +117,7 @@ fn rewrite_expr(expr: &Expr, schema: &Schema) -> Result<Expr> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::logicalplan::col;
     use crate::test::*;
 
     #[test]
@@ -136,10 +137,6 @@ mod tests {
         assert_optimized_plan_eq(&plan, expected);
 
         Ok(())
-    }
-
-    fn col(name: &str) -> Expr {
-        Expr::UnresolvedColumn(name.to_owned())
     }
 
     fn assert_optimized_plan_eq(plan: &LogicalPlan, expected: &str) {

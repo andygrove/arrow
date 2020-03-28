@@ -134,11 +134,17 @@ fn rewrite_expr(expr: &Expr, schema: &Schema) -> Result<Expr> {
         }),
         Expr::Cast { .. } => Ok(expr.clone()),
         Expr::Column(_) => Ok(expr.clone()),
+        Expr::Alias(expr, alias) => Ok(Expr::Alias(
+            Arc::new(rewrite_expr(expr, schema)?),
+            alias.to_owned(),
+        )),
         Expr::Literal(_) => Ok(expr.clone()),
-        other => Err(ExecutionError::NotImplemented(format!(
-            "Type coercion optimizer rule does not support expression: {:?}",
-            other
-        ))),
+        Expr::UnresolvedColumn(_) => Ok(expr.clone()),
+        Expr::Not(_) => Ok(expr.clone()),
+        Expr::Sort { .. } => Ok(expr.clone()),
+        Expr::Wildcard { .. } => Err(ExecutionError::General(
+            "Wildcard expressions are not valid in a logical query plan".to_owned(),
+        )),
     }
 }
 
