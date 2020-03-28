@@ -1197,19 +1197,19 @@ pub struct ScalarFunctionExpr {
 }
 
 impl ScalarFunctionExpr {
-
     /// Create a new Scalar function
-    pub fn new(name: String,
-               f: Box<ScalarFunction>,
-               args: Vec<Arc<dyn PhysicalExpr>>,
-               return_type: DataType) -> Self {
+    pub fn new(
+        name: String,
+        f: Box<ScalarFunction>,
+        args: Vec<Arc<dyn PhysicalExpr>>,
+        return_type: DataType,
+    ) -> Self {
         Self {
             name,
             f,
             args,
-        return_type
+            return_type,
         }
-
     }
 }
 
@@ -1223,7 +1223,12 @@ impl PhysicalExpr for ScalarFunctionExpr {
     }
 
     fn evaluate(&self, batch: &RecordBatch) -> Result<ArrayRef> {
-        (self.f)(batch)
+        let inputs = self
+            .args
+            .iter()
+            .map(|e| e.evaluate(batch))
+            .collect::<Result<Vec<_>>>()?;
+        (self.f)(&inputs)
     }
 }
 

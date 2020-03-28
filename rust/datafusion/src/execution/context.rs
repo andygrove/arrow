@@ -56,7 +56,7 @@ use arrow::array::ArrayRef;
 use sqlparser::sqlast::{SQLColumnDef, SQLType};
 
 /// Scalar UDF
-pub type ScalarFunction = fn(input: &RecordBatch) -> Result<ArrayRef>;
+pub type ScalarFunction = fn(input: &Vec<ArrayRef>) -> Result<ArrayRef>;
 
 /// Execution context for registering data sources and executing queries
 pub struct ExecutionContext {
@@ -855,12 +855,12 @@ mod tests {
         let provider = MemTable::new(schema, vec![batch]).unwrap();
         ctx.register_table("t", Box::new(provider));
 
-        let myfunc: ScalarFunction = |batch: &RecordBatch| {
-            let l = &batch.columns()[0]
+        let myfunc: ScalarFunction = |args: &Vec<ArrayRef>| {
+            let l = &args[0]
                 .as_any()
                 .downcast_ref::<Int32Array>()
                 .expect("cast failed");
-            let r = &batch.columns()[1]
+            let r = &args[1]
                 .as_any()
                 .downcast_ref::<Int32Array>()
                 .expect("cast failed");

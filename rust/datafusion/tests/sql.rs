@@ -158,8 +158,8 @@ fn csv_query_avg_sqrt() -> Result<()> {
 
 fn create_ctx() -> Result<ExecutionContext> {
     let mut ctx = ExecutionContext::new();
-    ctx.register_udf("sqrt", |batch: &RecordBatch| {
-        let input = &batch.columns()[0]
+    ctx.register_udf("sqrt", |args: &Vec<ArrayRef>| {
+        let input = &args[0]
             .as_any()
             .downcast_ref::<Float64Array>()
             .expect("cast failed");
