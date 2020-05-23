@@ -183,8 +183,34 @@ mod tests {
     use super::*;
     use crate::execution::context::ExecutionContext;
     use crate::logicalplan::Expr::*;
-    use crate::logicalplan::Operator;
+    use crate::logicalplan::{can_coerce_from, Operator};
+    use crate::optimizer::utils::get_supertype;
+    use arrow::datatypes::DataType::*;
     use arrow::datatypes::{DataType, Field, Schema};
+
+    #[test]
+    fn test_type_matrix() -> Result<()> {
+        let types = vec![
+            Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float32,
+            Float64, Utf8,
+        ];
+
+        for from_type in &types {
+            for to_type in &types {
+                match get_supertype(from_type, to_type) {
+                    Ok(t) => {
+                        // swapping from and to should result in same supertype
+                        assert_eq!(t, get_supertype(to_type, from_type)?);
+                        // both from and to types should be coercable to the supertype
+                        assert!(can_coerce_from(&t, &from_type));
+                        assert!(can_coerce_from(&t, &to_type));
+                    }
+                    Err(_) => assert!(get_supertype(to_type, from_type).is_err()),
+                }
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn test_add_i32_i64() {
