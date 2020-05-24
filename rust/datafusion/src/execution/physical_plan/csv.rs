@@ -96,7 +96,7 @@ impl<'a> CsvReadOptions<'a> {
 pub struct CsvExec {
     /// Path to directory containing partitioned CSV files with the same schema
     path: String,
-    /// Schema representing the CSV files after the optional projection is applied
+    /// Schema representing the CSV file
     schema: Arc<Schema>,
     /// Does the CSV file have a header?
     has_header: bool,
@@ -153,7 +153,10 @@ impl CsvExec {
 impl ExecutionPlan for CsvExec {
     /// Get the schema for this execution plan
     fn schema(&self) -> Arc<Schema> {
-        self.schema.clone()
+        match &self.projection {
+            None => self.schema.clone(),
+            Some(p) => Arc::new(Schema::new(p.iter().map(|i| self.schema.field(*i).clone()).collect()))
+        }
     }
 
     /// Get the partitions for this execution plan. Each partition can be executed in parallel.
