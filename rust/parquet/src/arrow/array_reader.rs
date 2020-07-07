@@ -19,9 +19,8 @@ use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::mem::size_of;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::result::Result::Ok;
-use std::sync::Arc;
 use std::vec::Vec;
 
 use arrow::array::{
@@ -81,7 +80,7 @@ pub trait ArrayReader {
 /// and read them into primitive arrays.
 pub struct PrimitiveArrayReader<T: DataType> {
     data_type: ArrowType,
-    pages: Box<dyn PageIterator>,
+    pages: Arc<Mutex<dyn PageIterator>>,
     def_levels_buffer: Option<Buffer>,
     rep_levels_buffer: Option<Buffer>,
     column_desc: ColumnDescPtr,
@@ -92,7 +91,7 @@ pub struct PrimitiveArrayReader<T: DataType> {
 impl<T: DataType> PrimitiveArrayReader<T> {
     /// Construct primitive array reader.
     pub fn new(
-        mut pages: Box<dyn PageIterator>,
+        pages: Arc<Mutex<dyn PageIterator>>,
         column_desc: ColumnDescPtr,
     ) -> Result<Self> {
         let data_type = parquet_to_arrow_field(column_desc.as_ref())?
@@ -100,11 +99,14 @@ impl<T: DataType> PrimitiveArrayReader<T> {
             .clone();
 
         let mut record_reader = RecordReader::<T>::new(column_desc.clone());
-        match pages.next() {
-            Some(page_reader) => {
-                record_reader.set_page_reader(page_reader?)?;
+        {
+            let mut xpages = pages.lock().unwrap();
+            match xpages.next() {
+                Some(page_reader) => {
+                    record_reader.set_page_reader(page_reader?)?;
+                }
+                None => {}
             }
-            None => {}
         }
 
         Ok(Self {
@@ -144,7 +146,7 @@ impl<T: DataType> ArrayReader for PrimitiveArrayReader<T> {
 
             // Record reader exhausted
             if records_read_once < records_to_read {
-                if let Some(page_reader) = self.pages.next() {
+                if let Some(page_reader) = self.pages.lock().unwrap().next() {
                     // Read from new page reader
                     self.record_reader.set_page_reader(page_reader?)?;
                 } else {
@@ -252,7 +254,7 @@ where
     C: Converter<Vec<Option<T::T>>, ArrayRef> + 'static,
 {
     data_type: ArrowType,
-    pages: Box<dyn PageIterator>,
+    pages: Arc<Mutex<dyn PageIterator>>,
     def_levels_buffer: Option<Vec<i16>>,
     rep_levels_buffer: Option<Vec<i16>>,
     column_desc: ColumnDescPtr,
@@ -393,7 +395,7 @@ where
     C: Converter<Vec<Option<T::T>>, ArrayRef> + 'static,
 {
     fn new(
-        pages: Box<dyn PageIterator>,
+        pages: Arc<Mutex<dyn PageIterator>>,
         column_desc: ColumnDescPtr,
         converter: C,
     ) -> Result<Self> {
@@ -415,7 +417,7 @@ where
     }
 
     fn next_column_reader(&mut self) -> Result<bool> {
-        Ok(match self.pages.next() {
+        Ok(match self.pages.lock().unwrap().next() {
             Some(page) => {
                 self.column_reader =
                     Some(ColumnReaderImpl::<T>::new(self.column_desc.clone(), page?));
@@ -428,7 +430,7 @@ where
 
 /// Implementation of struct array reader.
 pub struct StructArrayReader {
-    children: Vec<Box<dyn ArrayReader>>,
+    children: Vec<Arc<Mutex<dyn ArrayReader>>>,
     data_type: ArrowType,
     struct_def_level: i16,
     struct_rep_level: i16,
@@ -440,7 +442,7 @@ impl StructArrayReader {
     /// Construct struct array reader.
     pub fn new(
         data_type: ArrowType,
-        children: Vec<Box<dyn ArrayReader>>,
+        children: Vec<Arc<Mutex<dyn ArrayReader>>>,
         def_level: i16,
         rep_level: i16,
     ) -> Self {
@@ -493,7 +495,10 @@ impl ArrayReader for StructArrayReader {
         let children_array = self
             .children
             .iter_mut()
-            .map(|reader| reader.next_batch(batch_size))
+            .map(|reader| {
+                let mut reader = reader.lock().unwrap();
+                reader.next_batch(batch_size)
+            })
             .try_fold(
                 Vec::new(),
                 |mut result, child_array| -> Result<Vec<ArrayRef>> {
@@ -527,7 +532,7 @@ impl ArrayReader for StructArrayReader {
             .for_each(|v| *v = self.struct_def_level);
 
         for child in &self.children {
-            if let Some(current_child_def_levels) = child.get_def_levels() {
+            if let Some(current_child_def_levels) = child.lock().unwrap().get_def_levels() {
                 if current_child_def_levels.len() != children_array_len {
                     return Err(general_err!("Child array length are not equal!"));
                 } else {
@@ -572,6 +577,7 @@ impl ArrayReader for StructArrayReader {
             .ok_or_else(|| {
                 general_err!("Struct array reader should have at least one child!")
             })?
+            .lock().unwrap()
             .get_rep_levels()
             .map(|data| -> Result<Buffer> {
                 let mut buffer = Int16BufferBuilder::new(children_array_len);
@@ -602,8 +608,8 @@ impl ArrayReader for StructArrayReader {
 pub fn build_array_reader<T>(
     parquet_schema: SchemaDescPtr,
     column_indices: T,
-    file_reader: Rc<dyn FileReader>,
-) -> Result<Box<dyn ArrayReader>>
+    file_reader: Arc<dyn FileReader>,
+) -> Result<Arc<dyn ArrayReader>>
 where
     T: IntoIterator<Item = usize>,
 {
@@ -639,7 +645,7 @@ where
         fields: filtered_root_fields,
     };
 
-    ArrayReaderBuilder::new(Rc::new(proj), Rc::new(leaves), file_reader)
+    ArrayReaderBuilder::new(Arc::new(proj), Arc::new(leaves), file_reader)
         .build_array_reader()
 }
 
@@ -648,8 +654,8 @@ struct ArrayReaderBuilder {
     root_schema: TypePtr,
     // Key: columns that need to be included in final array builder
     // Value: column index in schema
-    columns_included: Rc<HashMap<*const Type, usize>>,
-    file_reader: Rc<dyn FileReader>,
+    columns_included: Arc<HashMap<*const Type, usize>>,
+    file_reader: Arc<dyn FileReader>,
 }
 
 /// Used in type visitor.
@@ -671,7 +677,7 @@ impl Default for ArrayReaderBuilderContext {
 }
 
 /// Create array reader by visiting schema.
-impl<'a> TypeVisitor<Option<Box<dyn ArrayReader>>, &'a ArrayReaderBuilderContext>
+impl<'a> TypeVisitor<Option<Arc<dyn ArrayReader>>, &'a ArrayReaderBuilderContext>
     for ArrayReaderBuilder
 {
     /// Build array reader for primitive type.
@@ -681,7 +687,7 @@ impl<'a> TypeVisitor<Option<Box<dyn ArrayReader>>, &'a ArrayReaderBuilderContext
         &mut self,
         cur_type: TypePtr,
         context: &'a ArrayReaderBuilderContext,
-    ) -> Result<Option<Box<dyn ArrayReader>>> {
+    ) -> Result<Option<Arc<dyn ArrayReader>>> {
         if self.is_included(cur_type.as_ref()) {
             let mut new_context = context.clone();
             new_context.path.append(vec![cur_type.name().to_string()]);
@@ -715,9 +721,9 @@ impl<'a> TypeVisitor<Option<Box<dyn ArrayReader>>, &'a ArrayReaderBuilderContext
     /// Build array reader for struct type.
     fn visit_struct(
         &mut self,
-        cur_type: Rc<Type>,
+        cur_type: Arc<Type>,
         context: &'a ArrayReaderBuilderContext,
-    ) -> Result<Option<Box<ArrayReader>>> {
+    ) -> Result<Option<Arc<ArrayReader>>> {
         let mut new_context = context.clone();
         new_context.path.append(vec![cur_type.name().to_string()]);
 
@@ -753,9 +759,9 @@ impl<'a> TypeVisitor<Option<Box<dyn ArrayReader>>, &'a ArrayReaderBuilderContext
     /// Currently this is not supported.
     fn visit_map(
         &mut self,
-        _cur_type: Rc<Type>,
+        _cur_type: Arc<Type>,
         _context: &'a ArrayReaderBuilderContext,
-    ) -> Result<Option<Box<dyn ArrayReader>>> {
+    ) -> Result<Option<Arc<dyn ArrayReader>>> {
         Err(ArrowError(
             "Reading parquet map array into arrow is not supported yet!".to_string(),
         ))
@@ -765,10 +771,10 @@ impl<'a> TypeVisitor<Option<Box<dyn ArrayReader>>, &'a ArrayReaderBuilderContext
     /// Currently this is not supported.
     fn visit_list_with_item(
         &mut self,
-        _list_type: Rc<Type>,
+        _list_type: Arc<Type>,
         _item_type: &Type,
         _context: &'a ArrayReaderBuilderContext,
-    ) -> Result<Option<Box<dyn ArrayReader>>> {
+    ) -> Result<Option<Arc<dyn ArrayReader>>> {
         Err(ArrowError(
             "Reading parquet list array into arrow is not supported yet!".to_string(),
         ))
@@ -779,8 +785,8 @@ impl<'a> ArrayReaderBuilder {
     /// Construct array reader builder.
     fn new(
         root_schema: TypePtr,
-        columns_included: Rc<HashMap<*const Type, usize>>,
-        file_reader: Rc<dyn FileReader>,
+        columns_included: Arc<HashMap<*const Type, usize>>,
+        file_reader: Arc<dyn FileReader>,
     ) -> Self {
         Self {
             root_schema,
@@ -790,7 +796,7 @@ impl<'a> ArrayReaderBuilder {
     }
 
     /// Main entry point.
-    fn build_array_reader(&mut self) -> Result<Box<dyn ArrayReader>> {
+    fn build_array_reader(&mut self) -> Result<Arc<dyn ArrayReader>> {
         let context = ArrayReaderBuilderContext::default();
 
         self.visit_struct(self.root_schema.clone(), &context)
@@ -811,52 +817,52 @@ impl<'a> ArrayReaderBuilder {
         &self,
         cur_type: TypePtr,
         context: &'a ArrayReaderBuilderContext,
-    ) -> Result<Box<dyn ArrayReader>> {
-        let column_desc = Rc::new(ColumnDescriptor::new(
+    ) -> Result<Arc<dyn ArrayReader>> {
+        let column_desc = Arc::new(ColumnDescriptor::new(
             cur_type.clone(),
             Some(self.root_schema.clone()),
             context.def_level,
             context.rep_level,
             context.path.clone(),
         ));
-        let page_iterator = Box::new(FilePageIterator::new(
+        let page_iterator = Arc::new(Mutex::new(FilePageIterator::new(
             self.columns_included[&(cur_type.as_ref() as *const Type)],
             self.file_reader.clone(),
-        )?);
+        )?));
 
         match cur_type.get_physical_type() {
-            PhysicalType::BOOLEAN => Ok(Box::new(PrimitiveArrayReader::<BoolType>::new(
+            PhysicalType::BOOLEAN => Ok(Arc::new(PrimitiveArrayReader::<BoolType>::new(
                 page_iterator,
                 column_desc,
             )?)),
-            PhysicalType::INT32 => Ok(Box::new(PrimitiveArrayReader::<Int32Type>::new(
+            PhysicalType::INT32 => Ok(Arc::new(PrimitiveArrayReader::<Int32Type>::new(
                 page_iterator,
                 column_desc,
             )?)),
-            PhysicalType::INT64 => Ok(Box::new(PrimitiveArrayReader::<Int64Type>::new(
+            PhysicalType::INT64 => Ok(Arc::new(PrimitiveArrayReader::<Int64Type>::new(
                 page_iterator,
                 column_desc,
             )?)),
             PhysicalType::INT96 => {
                 let converter = Int96Converter::new(Int96ArrayConverter {});
-                Ok(Box::new(ComplexObjectArrayReader::<
+                Ok(Arc::new(ComplexObjectArrayReader::<
                     Int96Type,
                     Int96Converter,
                 >::new(
                     page_iterator, column_desc, converter
                 )?))
             }
-            PhysicalType::FLOAT => Ok(Box::new(PrimitiveArrayReader::<FloatType>::new(
+            PhysicalType::FLOAT => Ok(Arc::new(PrimitiveArrayReader::<FloatType>::new(
                 page_iterator,
                 column_desc,
             )?)),
-            PhysicalType::DOUBLE => Ok(Box::new(
+            PhysicalType::DOUBLE => Ok(Arc::new(
                 PrimitiveArrayReader::<DoubleType>::new(page_iterator, column_desc)?,
             )),
             PhysicalType::BYTE_ARRAY => {
                 if cur_type.get_basic_info().logical_type() == LogicalType::UTF8 {
                     let converter = Utf8Converter::new(Utf8ArrayConverter {});
-                    Ok(Box::new(ComplexObjectArrayReader::<
+                    Ok(Arc::new(ComplexObjectArrayReader::<
                         ByteArrayType,
                         Utf8Converter,
                     >::new(
@@ -864,7 +870,7 @@ impl<'a> ArrayReaderBuilder {
                     )?))
                 } else {
                     let converter = BinaryConverter::new(BinaryArrayConverter {});
-                    Ok(Box::new(ComplexObjectArrayReader::<
+                    Ok(Arc::new(ComplexObjectArrayReader::<
                         ByteArrayType,
                         BinaryConverter,
                     >::new(
@@ -886,7 +892,7 @@ impl<'a> ArrayReaderBuilder {
                 let converter = FixedLenBinaryConverter::new(
                     FixedSizeArrayConverter::new(byte_width),
                 );
-                Ok(Box::new(ComplexObjectArrayReader::<
+                Ok(Arc::new(ComplexObjectArrayReader::<
                     FixedLenByteArrayType,
                     FixedLenBinaryConverter,
                 >::new(
@@ -901,9 +907,9 @@ impl<'a> ArrayReaderBuilder {
         &mut self,
         cur_type: &Type,
         context: &'a ArrayReaderBuilderContext,
-    ) -> Result<Option<Box<dyn ArrayReader>>> {
+    ) -> Result<Option<Arc<dyn ArrayReader>>> {
         let mut fields = Vec::with_capacity(cur_type.get_fields().len());
-        let mut children_reader = Vec::with_capacity(cur_type.get_fields().len());
+        let mut children_reader: Vec<Arc<Mutex<ArrayReader>>> = Vec::with_capacity(cur_type.get_fields().len());
 
         for child in cur_type.get_fields() {
             if let Some(child_reader) = self.dispatch(child.clone(), context)? {
@@ -912,13 +918,13 @@ impl<'a> ArrayReaderBuilder {
                     child_reader.get_data_type().clone(),
                     child.is_optional(),
                 ));
-                children_reader.push(child_reader);
+                children_reader.push(Arc::new(Mutex::new(child_reader)));
             }
         }
 
         if !fields.is_empty() {
             let arrow_type = ArrowType::Struct(fields);
-            Ok(Some(Box::new(StructArrayReader::new(
+            Ok(Some(Arc::new(StructArrayReader::new(
                 arrow_type,
                 children_reader,
                 context.def_level,
@@ -956,7 +962,6 @@ mod tests {
     use rand::{thread_rng, Rng};
     use std::any::Any;
     use std::collections::VecDeque;
-    use std::rc::Rc;
     use std::sync::Arc;
 
     fn make_column_chuncks<T: DataType>(
@@ -1011,7 +1016,7 @@ mod tests {
         ";
 
         let schema = parse_message_type(message_type)
-            .map(|t| Rc::new(SchemaDescriptor::new(Rc::new(t))))
+            .map(|t| Arc::new(SchemaDescriptor::new(Arc::new(t))))
             .unwrap();
 
         let column_desc = schema.column(0);
@@ -1040,7 +1045,7 @@ mod tests {
             );
 
             let mut array_reader = PrimitiveArrayReader::<Int32Type>::new(
-                Box::new(page_iterator),
+                Arc::new(page_iterator),
                 column_desc.clone(),
             )
             .unwrap();
@@ -1101,7 +1106,7 @@ mod tests {
                 $physical_type, $logical_type_str
             );
             let schema = parse_message_type(&message_type)
-                .map(|t| Rc::new(SchemaDescriptor::new(Rc::new(t))))
+                .map(|t| Arc::new(SchemaDescriptor::new(Arc::new(t))))
                 .unwrap();
 
             let column_desc = schema.column(0);
@@ -1129,7 +1134,7 @@ mod tests {
                     page_lists,
                 );
                 let mut array_reader = PrimitiveArrayReader::<$arrow_parquet_type>::new(
-                    Box::new(page_iterator),
+                    Arc::new(page_iterator),
                     column_desc.clone(),
                 )
                 .unwrap();
@@ -1205,7 +1210,7 @@ mod tests {
         ";
 
         let schema = parse_message_type(message_type)
-            .map(|t| Rc::new(SchemaDescriptor::new(Rc::new(t))))
+            .map(|t| Arc::new(SchemaDescriptor::new(Arc::new(t))))
             .unwrap();
 
         let column_desc = schema.column(0);
@@ -1236,7 +1241,7 @@ mod tests {
             );
 
             let mut array_reader = PrimitiveArrayReader::<Int32Type>::new(
-                Box::new(page_iterator),
+                Arc::new(page_iterator),
                 column_desc.clone(),
             )
             .unwrap();
@@ -1296,7 +1301,7 @@ mod tests {
         let str_base = "Hello World";
 
         let schema = parse_message_type(message_type)
-            .map(|t| Rc::new(SchemaDescriptor::new(Rc::new(t))))
+            .map(|t| Arc::new(SchemaDescriptor::new(Arc::new(t))))
             .unwrap();
 
         let max_def_level = schema.column(0).max_def_level();
@@ -1349,7 +1354,7 @@ mod tests {
         let converter = Utf8Converter::new(Utf8ArrayConverter {});
         let mut array_reader =
             ComplexObjectArrayReader::<ByteArrayType, Utf8Converter>::new(
-                Box::new(page_iterator),
+                Arc::new(page_iterator),
                 column_desc.clone(),
                 converter,
             )
@@ -1478,7 +1483,7 @@ mod tests {
 
         let mut struct_array_reader = StructArrayReader::new(
             struct_type,
-            vec![Box::new(array_reader_1), Box::new(array_reader_2)],
+            vec![Arc::new(array_reader_1), Arc::new(array_reader_2)],
             1,
             1,
         );
@@ -1506,7 +1511,7 @@ mod tests {
     #[test]
     fn test_create_array_reader() {
         let file = get_test_file("nulls.snappy.parquet");
-        let file_reader = Rc::new(SerializedFileReader::new(file).unwrap());
+        let file_reader = Arc::new(SerializedFileReader::new(file).unwrap());
 
         let array_reader = build_array_reader(
             file_reader.metadata().file_metadata().schema_descr_ptr(),

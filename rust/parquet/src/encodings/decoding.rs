@@ -943,7 +943,7 @@ impl Decoder<FixedLenByteArrayType> for DeltaByteArrayDecoder<FixedLenByteArrayT
 mod tests {
     use super::{super::encoding::*, *};
 
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     use crate::schema::types::{
         ColumnDescPtr, ColumnDescriptor, ColumnPath, Type as SchemaType,
@@ -1390,7 +1390,7 @@ mod tests {
 
         // Encode data
         let mut encoder =
-            get_encoder::<T>(col_descr.clone(), encoding, Rc::new(MemTracker::new()))
+            get_encoder::<T>(col_descr.clone(), encoding, Arc::new(MemTracker::new()))
                 .expect("get encoder");
 
         for v in &data[..] {
@@ -1443,8 +1443,8 @@ mod tests {
             .with_length(type_len)
             .build()
             .unwrap();
-        Rc::new(ColumnDescriptor::new(
-            Rc::new(ty),
+        Arc::new(ColumnDescriptor::new(
+            Arc::new(ty),
             None,
             0,
             0,

@@ -23,7 +23,7 @@ use std::{
     fs::File,
     io::{BufReader, Cursor, Read, Seek, SeekFrom},
     path::Path,
-    rc::Rc,
+    sync::Arc,
 };
 
 use byteorder::{ByteOrder, LittleEndian};
@@ -53,7 +53,7 @@ use crate::util::{io::FileSource, memory::ByteBufferPtr};
 
 /// Parquet file reader API. With this, user can get metadata information about the
 /// Parquet file, can get reader for each row group, and access record iterator.
-pub trait FileReader {
+pub trait FileReader : Sync + Send {
     /// Get metadata information about this file.
     fn metadata(&self) -> &ParquetMetaData;
 
@@ -150,8 +150,8 @@ impl TryClone for Cursor<Vec<u8>> {
 
 /// ParquetReader is the interface which needs to be fulfilled to be able to parse a
 /// parquet source.
-pub trait ParquetReader: Read + Seek + Length + TryClone {}
-impl<T: Read + Seek + Length + TryClone> ParquetReader for T {}
+pub trait ParquetReader: Read + Seek + Length + TryClone + Sync + Send {}
+impl<T: Read + Seek + Length + TryClone + Sync + Send> ParquetReader for T {}
 
 /// A serialized implementation for Parquet [`FileReader`].
 pub struct SerializedFileReader<R: ParquetReader> {
@@ -211,7 +211,7 @@ impl<R: ParquetReader> SerializedFileReader<R> {
                 ParquetError::General(format!("Could not parse metadata: {}", e))
             })?;
         let schema = types::from_thrift(&mut t_file_metadata.schema)?;
-        let schema_descr = Rc::new(SchemaDescriptor::new(schema.clone()));
+        let schema_descr = Arc::new(SchemaDescriptor::new(schema.clone()));
         let mut row_groups = Vec::new();
         for rg in t_file_metadata.row_groups {
             row_groups.push(RowGroupMetaData::from_thrift(schema_descr.clone(), rg)?);
@@ -586,12 +586,12 @@ impl<T: Read> PageReader for SerializedPageReader<T> {
 pub struct FilePageIterator {
     column_index: usize,
     row_group_indices: Box<Iterator<Item = usize>>,
-    file_reader: Rc<FileReader>,
+    file_reader: Arc<FileReader>,
 }
 
 impl FilePageIterator {
     /// Creates a page iterator for all row groups in file.
-    pub fn new(column_index: usize, file_reader: Rc<FileReader>) -> Result<Self> {
+    pub fn new(column_index: usize, file_reader: Arc<FileReader>) -> Result<Self> {
         let num_row_groups = file_reader.metadata().num_row_groups();
 
         let row_group_indices = Box::new(0..num_row_groups);
@@ -603,7 +603,7 @@ impl FilePageIterator {
     pub fn with_row_groups(
         column_index: usize,
         row_group_indices: Box<Iterator<Item = usize>>,
-        file_reader: Rc<FileReader>,
+        file_reader: Arc<FileReader>,
     ) -> Result<Self> {
         // Check that column_index is valid
         let num_columns = file_reader
@@ -732,12 +732,12 @@ mod tests {
     fn test_file_reader_column_orders_parse() {
         // Define simple schema, we do not need to provide logical types.
         let mut fields = vec![
-            Rc::new(
+            Arc::new(
                 SchemaType::primitive_type_builder("col1", Type::INT32)
                     .build()
                     .unwrap(),
             ),
-            Rc::new(
+            Arc::new(
                 SchemaType::primitive_type_builder("col2", Type::FLOAT)
                     .build()
                     .unwrap(),
@@ -747,7 +747,7 @@ mod tests {
             .with_fields(&mut fields)
             .build()
             .unwrap();
-        let schema_descr = SchemaDescriptor::new(Rc::new(schema));
+        let schema_descr = SchemaDescriptor::new(Arc::new(schema));
 
         let t_column_orders = Some(vec![
             TColumnOrder::TYPEORDER(TypeDefinedOrder::new()),
@@ -776,7 +776,7 @@ mod tests {
     #[should_panic(expected = "Column order length mismatch")]
     fn test_file_reader_column_orders_len_mismatch() {
         let schema = SchemaType::group_type_builder("schema").build().unwrap();
-        let schema_descr = SchemaDescriptor::new(Rc::new(schema));
+        let schema_descr = SchemaDescriptor::new(Arc::new(schema));
 
         let t_column_orders =
             Some(vec![TColumnOrder::TYPEORDER(TypeDefinedOrder::new())]);
@@ -1071,7 +1071,7 @@ mod tests {
     #[test]
     fn test_page_iterator() {
         let file = get_test_file("alltypes_plain.parquet");
-        let file_reader = Rc::new(SerializedFileReader::new(file).unwrap());
+        let file_reader = Arc::new(SerializedFileReader::new(file).unwrap());
 
         let mut page_iterator = FilePageIterator::new(0, file_reader.clone()).unwrap();
 
@@ -1102,7 +1102,7 @@ mod tests {
     #[test]
     fn test_file_reader_key_value_metadata() {
         let file = get_test_file("binary.parquet");
-        let file_reader = Rc::new(SerializedFileReader::new(file).unwrap());
+        let file_reader = Arc::new(SerializedFileReader::new(file).unwrap());
 
         let metadata = file_reader
             .metadata

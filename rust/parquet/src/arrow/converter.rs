@@ -311,7 +311,7 @@ mod tests {
     use arrow::array::ArrayEqual;
     use arrow::array::PrimitiveArray;
     use arrow::datatypes::{Int16Type, Int32Type};
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     #[test]
     fn test_converter_arrow_source_target_different() {
@@ -391,7 +391,7 @@ mod tests {
         num_records: usize,
     ) -> RecordReader<T> {
         let desc = parse_message_type(message_type)
-            .map(|t| SchemaDescriptor::new(Rc::new(t)))
+            .map(|t| SchemaDescriptor::new(Arc::new(t)))
             .map(|s| s.column(0))
             .unwrap();
 

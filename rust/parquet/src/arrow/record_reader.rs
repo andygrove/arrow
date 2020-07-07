@@ -518,7 +518,7 @@ mod tests {
         BooleanBufferBuilder, BufferBuilderTrait, Int16BufferBuilder, Int32BufferBuilder,
     };
     use arrow::bitmap::Bitmap;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     struct TestPageReader {
         pages: Box<Iterator<Item = Page>>,
@@ -547,7 +547,7 @@ mod tests {
         }
         ";
         let desc = parse_message_type(message_type)
-            .map(|t| SchemaDescriptor::new(Rc::new(t)))
+            .map(|t| SchemaDescriptor::new(Arc::new(t)))
             .map(|s| s.column(0))
             .unwrap();
 
@@ -626,7 +626,7 @@ mod tests {
         ";
 
         let desc = parse_message_type(message_type)
-            .map(|t| SchemaDescriptor::new(Rc::new(t)))
+            .map(|t| SchemaDescriptor::new(Arc::new(t)))
             .map(|s| s.column(0))
             .unwrap();
 
@@ -732,7 +732,7 @@ mod tests {
         ";
 
         let desc = parse_message_type(message_type)
-            .map(|t| SchemaDescriptor::new(Rc::new(t)))
+            .map(|t| SchemaDescriptor::new(Arc::new(t)))
             .map(|s| s.column(0))
             .unwrap();
 
@@ -840,7 +840,7 @@ mod tests {
         ";
 
         let desc = parse_message_type(message_type)
-            .map(|t| SchemaDescriptor::new(Rc::new(t)))
+            .map(|t| SchemaDescriptor::new(Arc::new(t)))
             .map(|s| s.column(0))
             .unwrap();
 

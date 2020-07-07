@@ -17,7 +17,7 @@
 
 //! Contains structs and methods to build Parquet schema and schema descriptors.
 
-use std::{collections::HashMap, convert::From, fmt, rc::Rc};
+use std::{collections::HashMap, convert::From, fmt, sync::Arc};
 
 use parquet_format::SchemaElement;
 
@@ -27,12 +27,12 @@ use crate::errors::{ParquetError, Result};
 // ----------------------------------------------------------------------
 // Parquet Type definitions
 
-/// Type alias for `Rc<Type>`.
-pub type TypePtr = Rc<Type>;
-/// Type alias for `Rc<SchemaDescriptor>`.
-pub type SchemaDescPtr = Rc<SchemaDescriptor>;
-/// Type alias for `Rc<ColumnDescriptor>`.
-pub type ColumnDescPtr = Rc<ColumnDescriptor>;
+/// Type alias for `Arc<Type>`.
+pub type TypePtr = Arc<Type>;
+/// Type alias for `Arc<SchemaDescriptor>`.
+pub type SchemaDescPtr = Arc<SchemaDescriptor>;
+/// Type alias for `Arc<ColumnDescriptor>`.
+pub type ColumnDescPtr = Arc<ColumnDescriptor>;
 
 /// Representation of a Parquet type.
 /// Used to describe primitive leaf fields and structs, including top-level schema.
@@ -788,7 +788,7 @@ impl SchemaDescriptor {
         result.clone()
     }
 
-    fn column_root_of(&self, i: usize) -> &Rc<Type> {
+    fn column_root_of(&self, i: usize) -> &Arc<Type> {
         assert!(
             i < self.leaves.len(),
             "Index out of bound: {} not in [0, {})",
@@ -844,7 +844,7 @@ fn build_tree(
         &Type::PrimitiveType { .. } => {
             let mut path: Vec<String> = vec![];
             path.extend_from_slice(&path_so_far[..]);
-            leaves.push(Rc::new(ColumnDescriptor::new(
+            leaves.push(Arc::new(ColumnDescriptor::new(
                 tp.clone(),
                 Some(root_tp),
                 max_def_level,
@@ -940,7 +940,7 @@ fn from_thrift_helper(
             if let Some(id) = field_id {
                 builder = builder.with_id(id);
             }
-            Ok((index + 1, Rc::new(builder.build()?)))
+            Ok((index + 1, Arc::new(builder.build()?)))
         }
         Some(n) => {
             let repetition = elements[index].repetition_type.map(|r| Repetition::from(r));
@@ -970,7 +970,7 @@ fn from_thrift_helper(
             if let Some(id) = field_id {
                 builder = builder.with_id(id);
             }
-            Ok((next_index, Rc::new(builder.build().unwrap())))
+            Ok((next_index, Arc::new(builder.build().unwrap())))
         }
     }
 }
@@ -1313,8 +1313,8 @@ mod tests {
         assert!(f2.is_ok());
 
         let mut fields = vec![];
-        fields.push(Rc::new(f1.unwrap()));
-        fields.push(Rc::new(f2.unwrap()));
+        fields.push(Arc::new(f1.unwrap()));
+        fields.push(Arc::new(f2.unwrap()));
 
         let result = Type::group_type_builder("foo")
             .with_repetition(Repetition::REPEATED)
@@ -1354,10 +1354,10 @@ mod tests {
             .with_logical_type(LogicalType::LIST)
             .build()
             .unwrap();
-        let root_tp_rc = Rc::new(root_tp);
+        let root_tp_rc = Arc::new(root_tp);
 
         let descr = ColumnDescriptor::new(
-            Rc::new(tp),
+            Arc::new(tp),
             Some(root_tp_rc.clone()),
             4,
             1,
@@ -1396,16 +1396,16 @@ mod tests {
             .with_repetition(Repetition::REQUIRED)
             .with_logical_type(LogicalType::INT_32)
             .build()?;
-        fields.push(Rc::new(inta));
+        fields.push(Arc::new(inta));
         let intb = Type::primitive_type_builder("b", PhysicalType::INT64)
             .with_logical_type(LogicalType::INT_64)
             .build()?;
-        fields.push(Rc::new(intb));
+        fields.push(Arc::new(intb));
         let intc = Type::primitive_type_builder("c", PhysicalType::BYTE_ARRAY)
             .with_repetition(Repetition::REPEATED)
             .with_logical_type(LogicalType::UTF8)
             .build()?;
-        fields.push(Rc::new(intc));
+        fields.push(Arc::new(intc));
 
         // 3-level list encoding
         let item1 = Type::primitive_type_builder("item1", PhysicalType::INT64)
@@ -1421,19 +1421,19 @@ mod tests {
         let list = Type::group_type_builder("records")
             .with_repetition(Repetition::REPEATED)
             .with_logical_type(LogicalType::LIST)
-            .with_fields(&mut vec![Rc::new(item1), Rc::new(item2), Rc::new(item3)])
+            .with_fields(&mut vec![Arc::new(item1), Arc::new(item2), Arc::new(item3)])
             .build()?;
         let bag = Type::group_type_builder("bag")
             .with_repetition(Repetition::OPTIONAL)
-            .with_fields(&mut vec![Rc::new(list)])
+            .with_fields(&mut vec![Arc::new(list)])
             .build()?;
-        fields.push(Rc::new(bag));
+        fields.push(Arc::new(bag));
 
         let schema = Type::group_type_builder("schema")
             .with_repetition(Repetition::REPEATED)
             .with_fields(&mut fields)
             .build()?;
-        let descr = SchemaDescriptor::new(Rc::new(schema));
+        let descr = SchemaDescriptor::new(Arc::new(schema));
 
         let nleaves = 6;
         assert_eq!(descr.num_columns(), nleaves);
@@ -1488,7 +1488,7 @@ mod tests {
     }
     ";
         let schema = parse_message_type(message_type).expect("should parse schema");
-        let descr = SchemaDescriptor::new(Rc::new(schema));
+        let descr = SchemaDescriptor::new(Arc::new(schema));
         // required int32 a
         assert_eq!(descr.column(0).max_def_level(), 0);
         assert_eq!(descr.column(0).max_rep_level(), 0);
@@ -1582,7 +1582,7 @@ mod tests {
     fn test_new_group_type(name: &str, repetition: Repetition, types: Vec<Type>) -> Type {
         let mut fields = Vec::new();
         for tpe in types {
-            fields.push(Rc::new(tpe))
+            fields.push(Arc::new(tpe))
         }
         Type::group_type_builder(name)
             .with_repetition(repetition)
@@ -1838,7 +1838,7 @@ mod tests {
         let expected_schema = parse_message_type(message_type).unwrap();
         let thrift_schema = to_thrift(&expected_schema).unwrap();
         let result_schema = from_thrift(&thrift_schema).unwrap();
-        assert_eq!(result_schema, Rc::new(expected_schema));
+        assert_eq!(result_schema, Arc::new(expected_schema));
     }
 
     #[test]
@@ -1854,7 +1854,7 @@ mod tests {
         let expected_schema = parse_message_type(message_type).unwrap();
         let thrift_schema = to_thrift(&expected_schema).unwrap();
         let result_schema = from_thrift(&thrift_schema).unwrap();
-        assert_eq!(result_schema, Rc::new(expected_schema));
+        assert_eq!(result_schema, Arc::new(expected_schema));
     }
 
     // Tests schema conversion from thrift, when num_children is set to Some(0) for a
@@ -1883,7 +1883,7 @@ mod tests {
         }
 
         let result_schema = from_thrift(&thrift_schema).unwrap();
-        assert_eq!(result_schema, Rc::new(expected_schema));
+        assert_eq!(result_schema, Arc::new(expected_schema));
     }
 
     // Sometimes parquet-cpp sets repetition level for the root node, which is against
@@ -1903,6 +1903,6 @@ mod tests {
         thrift_schema[0].repetition_type = Some(Repetition::REQUIRED.into());
 
         let result_schema = from_thrift(&thrift_schema).unwrap();
-        assert_eq!(result_schema, Rc::new(expected_schema));
+        assert_eq!(result_schema, Arc::new(expected_schema));
     }
 }

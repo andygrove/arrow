@@ -16,7 +16,7 @@
 // under the License.
 
 //! Contains column writer API.
-use std::{cmp, collections::VecDeque, rc::Rc};
+use std::{cmp, collections::VecDeque, sync::Arc};
 
 use crate::basic::{Compression, Encoding, PageType, Type};
 use crate::column::page::{CompressedPage, Page, PageWriteSpec, PageWriter};
@@ -213,7 +213,7 @@ impl<T: DataType> ColumnWriterImpl<T> {
         let dict_encoder = if props.dictionary_enabled(descr.path())
             && Self::has_dictionary_support(&props)
         {
-            Some(DictEncoder::new(descr.clone(), Rc::new(MemTracker::new())))
+            Some(DictEncoder::new(descr.clone(), Arc::new(MemTracker::new())))
         } else {
             None
         };
@@ -227,7 +227,7 @@ impl<T: DataType> ColumnWriterImpl<T> {
             props
                 .encoding(descr.path())
                 .unwrap_or(Self::fallback_encoding(&props)),
-            Rc::new(MemTracker::new()),
+            Arc::new(MemTracker::new()),
         )
         .unwrap();
 
@@ -1077,7 +1077,7 @@ mod tests {
     #[test]
     fn test_column_writer_inconsistent_def_rep_length() {
         let page_writer = get_test_page_writer();
-        let props = Rc::new(WriterProperties::builder().build());
+        let props = Arc::new(WriterProperties::builder().build());
         let mut writer = get_test_column_writer::<Int32Type>(page_writer, 1, 1, props);
         let res = writer.write_batch(&[1, 2, 3, 4], Some(&[1, 1, 1]), Some(&[0, 0]));
         assert!(res.is_err());
@@ -1092,7 +1092,7 @@ mod tests {
     #[test]
     fn test_column_writer_invalid_def_levels() {
         let page_writer = get_test_page_writer();
-        let props = Rc::new(WriterProperties::builder().build());
+        let props = Arc::new(WriterProperties::builder().build());
         let mut writer = get_test_column_writer::<Int32Type>(page_writer, 1, 0, props);
         let res = writer.write_batch(&[1, 2, 3, 4], None, None);
         assert!(res.is_err());
@@ -1107,7 +1107,7 @@ mod tests {
     #[test]
     fn test_column_writer_invalid_rep_levels() {
         let page_writer = get_test_page_writer();
-        let props = Rc::new(WriterProperties::builder().build());
+        let props = Arc::new(WriterProperties::builder().build());
         let mut writer = get_test_column_writer::<Int32Type>(page_writer, 0, 1, props);
         let res = writer.write_batch(&[1, 2, 3, 4], None, None);
         assert!(res.is_err());
@@ -1122,7 +1122,7 @@ mod tests {
     #[test]
     fn test_column_writer_not_enough_values_to_write() {
         let page_writer = get_test_page_writer();
-        let props = Rc::new(WriterProperties::builder().build());
+        let props = Arc::new(WriterProperties::builder().build());
         let mut writer = get_test_column_writer::<Int32Type>(page_writer, 1, 0, props);
         let res = writer.write_batch(&[1, 2], Some(&[1, 1, 1, 1]), None);
         assert!(res.is_err());
@@ -1138,7 +1138,7 @@ mod tests {
     #[should_panic(expected = "Dictionary offset is already set")]
     fn test_column_writer_write_only_one_dictionary_page() {
         let page_writer = get_test_page_writer();
-        let props = Rc::new(WriterProperties::builder().build());
+        let props = Arc::new(WriterProperties::builder().build());
         let mut writer = get_test_column_writer::<Int32Type>(page_writer, 0, 0, props);
         writer.write_batch(&[1, 2, 3, 4], None, None).unwrap();
         // First page should be correctly written.
@@ -1150,7 +1150,7 @@ mod tests {
     #[test]
     fn test_column_writer_error_when_writing_disabled_dictionary() {
         let page_writer = get_test_page_writer();
-        let props = Rc::new(
+        let props = Arc::new(
             WriterProperties::builder()
                 .set_dictionary_enabled(false)
                 .build(),
@@ -1170,7 +1170,7 @@ mod tests {
     #[test]
     fn test_column_writer_boolean_type_does_not_support_dictionary() {
         let page_writer = get_test_page_writer();
-        let props = Rc::new(
+        let props = Arc::new(
             WriterProperties::builder()
                 .set_dictionary_enabled(true)
                 .build(),
@@ -1449,7 +1449,7 @@ mod tests {
     #[test]
     fn test_column_writer_check_metadata() {
         let page_writer = get_test_page_writer();
-        let props = Rc::new(WriterProperties::builder().build());
+        let props = Arc::new(WriterProperties::builder().build());
         let mut writer = get_test_column_writer::<Int32Type>(page_writer, 0, 0, props);
         writer.write_batch(&[1, 2, 3, 4], None, None).unwrap();
 
@@ -1483,7 +1483,7 @@ mod tests {
     #[test]
     fn test_column_writer_precalculated_statistics() {
         let page_writer = get_test_page_writer();
-        let props = Rc::new(WriterProperties::builder().build());
+        let props = Arc::new(WriterProperties::builder().build());
         let mut writer = get_test_column_writer::<Int32Type>(page_writer, 0, 0, props);
         writer
             .write_batch_with_statistics(
@@ -1681,7 +1681,7 @@ mod tests {
         let file = get_temp_file("test_column_writer_add_data_pages_with_dict", &[]);
         let sink = FileSink::new(&file);
         let page_writer = Box::new(SerializedPageWriter::new(sink));
-        let props = Rc::new(
+        let props = Arc::new(
             WriterProperties::builder()
                 .set_data_pagesize_limit(15) // actually each page will have size 15-18 bytes
                 .set_write_batch_size(3) // write 3 values at a time
@@ -1797,7 +1797,7 @@ mod tests {
             page_writer,
             max_def_level,
             max_rep_level,
-            Rc::new(props),
+            Arc::new(props),
         );
 
         let values_written = writer.write_batch(values, def_levels, rep_levels).unwrap();
@@ -1865,7 +1865,7 @@ mod tests {
         values: &[T::T],
     ) -> ColumnChunkMetaData {
         let page_writer = get_test_page_writer();
-        let props = Rc::new(props);
+        let props = Arc::new(props);
         let mut writer = get_test_column_writer::<T>(page_writer, 0, 0, props);
         writer.write_batch(values, None, None).unwrap();
         let (_, _, metadata) = writer.close().unwrap();
@@ -1914,7 +1914,7 @@ mod tests {
         max_rep_level: i16,
         props: WriterPropertiesPtr,
     ) -> ColumnWriterImpl<T> {
-        let descr = Rc::new(get_test_column_descr::<T>(max_def_level, max_rep_level));
+        let descr = Arc::new(get_test_column_descr::<T>(max_def_level, max_rep_level));
         let column_writer = get_column_writer(descr, props, page_writer);
         get_typed_column_writer::<T>(column_writer)
     }
@@ -1925,7 +1925,7 @@ mod tests {
         max_def_level: i16,
         max_rep_level: i16,
     ) -> ColumnReaderImpl<T> {
-        let descr = Rc::new(get_test_column_descr::<T>(max_def_level, max_rep_level));
+        let descr = Arc::new(get_test_column_descr::<T>(max_def_level, max_rep_level));
         let column_reader = get_column_reader(descr, page_reader);
         get_typed_column_reader::<T>(column_reader)
     }
@@ -1942,7 +1942,7 @@ mod tests {
             .with_length(1)
             .build()
             .unwrap();
-        ColumnDescriptor::new(Rc::new(tpe), None, max_def_level, max_rep_level, path)
+        ColumnDescriptor::new(Arc::new(tpe), None, max_def_level, max_rep_level, path)
     }
 
     /// Returns page writer that collects pages without serializing them.

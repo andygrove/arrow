@@ -24,7 +24,7 @@
 //! The interfaces for converting arrow schema to parquet schema is coming.
 
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::basic::{LogicalType, Repetition, Type as PhysicalType};
 use crate::errors::{ParquetError::ArrowError, Result};
@@ -88,12 +88,12 @@ pub fn arrow_to_parquet_schema(schema: &Schema) -> Result<SchemaDescriptor> {
     let fields: Result<Vec<TypePtr>> = schema
         .fields()
         .iter()
-        .map(|field| arrow_to_parquet_type(field).map(|f| Rc::new(f)))
+        .map(|field| arrow_to_parquet_type(field).map(|f| Arc::new(f)))
         .collect();
     let group = Type::group_type_builder("arrow_schema")
         .with_fields(&mut fields?)
         .build()?;
-    Ok(SchemaDescriptor::new(Rc::new(group)))
+    Ok(SchemaDescriptor::new(Arc::new(group)))
 }
 
 fn parse_key_value_metadata(
@@ -235,9 +235,9 @@ fn arrow_to_parquet_type(field: &Field) -> Result<Type> {
             .build(),
         DataType::List(dtype) | DataType::FixedSizeList(dtype, _) => {
             Type::group_type_builder(name)
-                .with_fields(&mut vec![Rc::new(
+                .with_fields(&mut vec![Arc::new(
                     Type::group_type_builder("list")
-                        .with_fields(&mut vec![Rc::new({
+                        .with_fields(&mut vec![Arc::new({
                             let list_field = Field::new(
                                 "element",
                                 *dtype.clone(),
@@ -256,7 +256,7 @@ fn arrow_to_parquet_type(field: &Field) -> Result<Type> {
             // recursively convert children to types/nodes
             let fields: Result<Vec<TypePtr>> = fields
                 .into_iter()
-                .map(|f| arrow_to_parquet_type(f).map(Rc::new))
+                .map(|f| arrow_to_parquet_type(f).map(Arc::new))
                 .collect();
             Type::group_type_builder(name)
                 .with_fields(&mut fields?)
@@ -580,7 +580,7 @@ mod tests {
         ";
         let parquet_group_type = parse_message_type(message_type).unwrap();
 
-        let parquet_schema = SchemaDescriptor::new(Rc::new(parquet_group_type));
+        let parquet_schema = SchemaDescriptor::new(Arc::new(parquet_group_type));
         let converted_arrow_schema =
             parquet_to_arrow_schema(&parquet_schema, &None).unwrap();
 
@@ -609,7 +609,7 @@ mod tests {
 
         let parquet_group_type = parse_message_type(message_type).unwrap();
 
-        let parquet_schema = SchemaDescriptor::new(Rc::new(parquet_group_type));
+        let parquet_schema = SchemaDescriptor::new(Arc::new(parquet_group_type));
         let converted_arrow_schema =
             parquet_to_arrow_schema(&parquet_schema, &None).unwrap();
 
@@ -631,7 +631,7 @@ mod tests {
 
         let parquet_group_type = parse_message_type(message_type).unwrap();
 
-        let parquet_schema = SchemaDescriptor::new(Rc::new(parquet_group_type));
+        let parquet_schema = SchemaDescriptor::new(Arc::new(parquet_group_type));
         let converted_arrow_schema =
             parquet_to_arrow_schema(&parquet_schema, &None).unwrap();
 
@@ -845,7 +845,7 @@ mod tests {
 
         let parquet_group_type = parse_message_type(message_type).unwrap();
 
-        let parquet_schema = SchemaDescriptor::new(Rc::new(parquet_group_type));
+        let parquet_schema = SchemaDescriptor::new(Arc::new(parquet_group_type));
         let converted_arrow_schema =
             parquet_to_arrow_schema(&parquet_schema, &None).unwrap();
         let converted_fields = converted_arrow_schema.fields();
@@ -883,7 +883,7 @@ mod tests {
         ";
         let parquet_group_type = parse_message_type(message_type).unwrap();
 
-        let parquet_schema = SchemaDescriptor::new(Rc::new(parquet_group_type));
+        let parquet_schema = SchemaDescriptor::new(Arc::new(parquet_group_type));
         let converted_arrow_schema =
             parquet_to_arrow_schema(&parquet_schema, &None).unwrap();
         let converted_fields = converted_arrow_schema.fields();
@@ -933,7 +933,7 @@ mod tests {
         // }
         // required int64 leaf5;
 
-        let parquet_schema = SchemaDescriptor::new(Rc::new(parquet_group_type));
+        let parquet_schema = SchemaDescriptor::new(Arc::new(parquet_group_type));
         let converted_arrow_schema =
             parquet_to_arrow_schema_by_columns(&parquet_schema, vec![0, 3, 4], &None)
                 .unwrap();
@@ -984,7 +984,7 @@ mod tests {
         // }
         // required int64 leaf5;
 
-        let parquet_schema = SchemaDescriptor::new(Rc::new(parquet_group_type));
+        let parquet_schema = SchemaDescriptor::new(Arc::new(parquet_group_type));
         let converted_arrow_schema =
             parquet_to_arrow_schema_by_columns(&parquet_schema, vec![3, 4, 0], &None)
                 .unwrap();
@@ -1036,7 +1036,7 @@ mod tests {
         ";
         let parquet_group_type = parse_message_type(message_type).unwrap();
 
-        let parquet_schema = SchemaDescriptor::new(Rc::new(parquet_group_type));
+        let parquet_schema = SchemaDescriptor::new(Arc::new(parquet_group_type));
         let converted_arrow_schema =
             parquet_to_arrow_schema(&parquet_schema, &None).unwrap();
         let converted_fields = converted_arrow_schema.fields();
@@ -1069,7 +1069,7 @@ mod tests {
         ";
         let parquet_group_type = parse_message_type(message_type).unwrap();
 
-        let parquet_schema = SchemaDescriptor::new(Rc::new(parquet_group_type));
+        let parquet_schema = SchemaDescriptor::new(Arc::new(parquet_group_type));
         let converted_arrow_fields = parquet_schema
             .columns()
             .iter()
@@ -1140,7 +1140,7 @@ mod tests {
         ";
         let parquet_group_type = parse_message_type(message_type).unwrap();
 
-        let parquet_schema = SchemaDescriptor::new(Rc::new(parquet_group_type));
+        let parquet_schema = SchemaDescriptor::new(Arc::new(parquet_group_type));
 
         let arrow_fields = vec![
             Field::new("boolean", DataType::Boolean, false),
@@ -1212,7 +1212,7 @@ mod tests {
         let mut expected_metadata: HashMap<String, String> = HashMap::new();
         expected_metadata.insert("foo".to_owned(), "bar".to_owned());
 
-        let parquet_schema = SchemaDescriptor::new(Rc::new(parquet_group_type));
+        let parquet_schema = SchemaDescriptor::new(Arc::new(parquet_group_type));
         let converted_arrow_schema =
             parquet_to_arrow_schema(&parquet_schema, &Some(key_value_metadata)).unwrap();
 

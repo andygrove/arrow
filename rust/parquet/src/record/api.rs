@@ -760,7 +760,7 @@ mod tests {
     use super::*;
 
     use chrono;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     use crate::schema::types::{ColumnDescriptor, ColumnPath, PrimitiveTypeBuilder};
 
@@ -771,8 +771,8 @@ mod tests {
                 .with_logical_type($logical_type)
                 .build()
                 .unwrap();
-            Rc::new(ColumnDescriptor::new(
-                Rc::new(tpe),
+            Arc::new(ColumnDescriptor::new(
+                Arc::new(tpe),
                 None,
                 0,
                 0,
@@ -787,8 +787,8 @@ mod tests {
                 .with_scale($scale)
                 .build()
                 .unwrap();
-            Rc::new(ColumnDescriptor::new(
-                Rc::new(tpe),
+            Arc::new(ColumnDescriptor::new(
+                Arc::new(tpe),
                 None,
                 0,
                 0,

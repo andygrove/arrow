@@ -504,7 +504,7 @@ mod tests {
     use super::*;
 
     use rand::distributions::uniform::SampleUniform;
-    use std::{collections::VecDeque, rc::Rc, vec::IntoIter};
+    use std::{collections::VecDeque, sync::Arc, vec::IntoIter};
 
     use crate::basic::Type as PhysicalType;
     use crate::column::page::Page;
@@ -560,8 +560,8 @@ mod tests {
      $min:expr, $max:expr) => {
             #[test]
             fn $test_func() {
-                let desc = Rc::new(ColumnDescriptor::new(
-                    Rc::new($pty()),
+                let desc = Arc::new(ColumnDescriptor::new(
+                    Arc::new($pty()),
                     None,
                     $def_level,
                     $rep_level,
@@ -956,8 +956,8 @@ mod tests {
         // Note: values are chosen to reproduce the issue.
         //
         let primitive_type = get_test_int32_type();
-        let desc = Rc::new(ColumnDescriptor::new(
-            Rc::new(primitive_type),
+        let desc = Arc::new(ColumnDescriptor::new(
+            Arc::new(primitive_type),
             None,
             1,
             1,
@@ -1074,8 +1074,8 @@ mod tests {
             0
         };
 
-        let desc = Rc::new(ColumnDescriptor::new(
-            Rc::new(primitive_type),
+        let desc = Arc::new(ColumnDescriptor::new(
+            Arc::new(primitive_type),
             None,
             max_def_level,
             max_rep_level,
