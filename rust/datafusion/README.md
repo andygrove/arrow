@@ -19,8 +19,9 @@
 
 # DataFusion
 
-DataFusion is an in-memory query engine that uses Apache Arrow as the memory model. It supports executing SQL queries against CSV and Parquet files as well as querying directly against in-memory data.
-
+DataFusion is an in-memory query engine that uses Apache Arrow as the memory model and provides a DataFrame API as 
+well as SQL support.
+ 
 ## Using DataFusion as a library
 
 DataFusion can be used as a library by adding the following to your `Cargo.toml` file.
@@ -30,9 +31,48 @@ DataFusion can be used as a library by adding the following to your `Cargo.toml`
 datafusion = "2.0.0-SNAPSHOT"
 ```
 
+## Examples
+
+See the [examples directory](examples) for a number of examples of DataFusion usage. The follow code samples 
+demonstrate how to execute the same query using both the DataFrame and SQL APIs.
+
+### DataFrame Example
+
+```rust
+// create an execution context
+let mut ctx = ExecutionContext::new();
+
+// build a query using the DataFrame API
+let df = ctx
+    .read_parquet("/path/to/tripdata.parquet")?
+    .aggregate(vec![col("passenger_count")], vec![df.avg(col("fare_amount"))?])?;
+
+// execute the query
+let batch_size = 4096;
+let results = df.collect(batch_size)?;
+```
+
+### SQL Example
+
+```rust
+// create an execution context
+let mut ctx = ExecutionContext::new();
+
+// register the data source with the context so that it can be referenced from SQL
+ctx.register_parquet("tripdata", "/path/to/tripdata.parquet")?;
+
+// create a DataFrame using SQL
+let df = ctx.sql("SELECT passenger_count, AVG(fare_amount) FROM trip_data GROUP BY passenger_count")?;
+
+// execute the query
+let batch_size = 4096;
+let results = df.collect(batch_size)?;
+```
+
 ## Using DataFusion as a binary
 
-DataFusion includes a simple command-line interactive SQL utility. See the [CLI reference](docs/cli.md) for more information.
+DataFusion includes a simple command-line interactive SQL utility. See the [CLI reference](docs/cli.md) for more 
+information.
 
 # Status
 
