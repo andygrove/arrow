@@ -626,7 +626,7 @@ fn finalize_aggregation(
 /// Enumeration of types that can be used in a GROUP BY expression (all primitives except
 /// for floating point numerics)
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-enum GroupByScalar {
+pub enum GroupByScalar {
     UInt8(u8),
     UInt16(u16),
     UInt32(u32),

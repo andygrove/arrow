@@ -199,6 +199,7 @@ pub mod expressions;
 pub mod filter;
 pub mod functions;
 pub mod hash_aggregate;
+pub mod joins;
 pub mod limit;
 pub mod math_expressions;
 pub mod memory;
