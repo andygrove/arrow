@@ -130,6 +130,7 @@ pub fn optimize_explain(
 /// returns all expressions (non-recursively) in the current logical plan node.
 pub fn expressions(plan: &LogicalPlan) -> Vec<Expr> {
     match plan {
+        LogicalPlan::Alias(plan, _) => expressions(plan),
         LogicalPlan::Projection { expr, .. } => expr.clone(),
         LogicalPlan::Filter { predicate, .. } => vec![predicate.clone()],
         LogicalPlan::Aggregate {
@@ -161,6 +162,7 @@ pub fn expressions(plan: &LogicalPlan) -> Vec<Expr> {
 /// returns all inputs in the logical plan
 pub fn inputs(plan: &LogicalPlan) -> Vec<&LogicalPlan> {
     match plan {
+        LogicalPlan::Alias(input, _) => vec![input],
         LogicalPlan::Projection { input, .. } => vec![input],
         LogicalPlan::Filter { input, .. } => vec![input],
         LogicalPlan::Aggregate { input, .. } => vec![input],
@@ -186,6 +188,10 @@ pub fn from_plan(
     inputs: &Vec<LogicalPlan>,
 ) -> Result<LogicalPlan> {
     match plan {
+        LogicalPlan::Alias(_, alias) => Ok(LogicalPlan::Alias(
+            Box::new(inputs[0].clone()),
+            alias.to_owned(),
+        )),
         LogicalPlan::Projection { schema, .. } => Ok(LogicalPlan::Projection {
             expr: expr.clone(),
             input: Arc::new(inputs[0].clone()),

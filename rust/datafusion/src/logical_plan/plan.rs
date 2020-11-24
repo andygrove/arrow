@@ -114,6 +114,8 @@ pub enum LogicalPlan {
         /// The output schema, containing fields from the left and right inputs
         schema: SchemaRef,
     },
+    /// Aliased relation (relation with fully qualified column names, used in SQL joins)
+    Alias(Box<LogicalPlan>, String),
     /// Produces rows from a table provider by reference or from the context
     TableScan {
         /// The name of the schema
@@ -227,6 +229,7 @@ impl LogicalPlan {
             LogicalPlan::TableScan {
                 projected_schema, ..
             } => &projected_schema,
+            LogicalPlan::Alias(plan, _) => plan.schema(),
             LogicalPlan::Projection { schema, .. } => &schema,
             LogicalPlan::Filter { input, .. } => input.schema(),
             LogicalPlan::Aggregate { schema, .. } => &schema,
@@ -309,6 +312,7 @@ impl LogicalPlan {
         }
 
         let recurse = match self {
+            LogicalPlan::Alias(plan, _) => plan.accept(visitor)?,
             LogicalPlan::Projection { input, .. } => input.accept(visitor)?,
             LogicalPlan::Filter { input, .. } => input.accept(visitor)?,
             LogicalPlan::Aggregate { input, .. } => input.accept(visitor)?,
@@ -517,7 +521,10 @@ impl LogicalPlan {
         struct Wrapper<'a>(&'a LogicalPlan);
         impl<'a> fmt::Display for Wrapper<'a> {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                match *self.0 {
+                match &self.0 {
+                    LogicalPlan::Alias(_, alias) => {
+                        write!(f, "Aliased Plan: {}", alias)
+                    }
                     LogicalPlan::EmptyRelation { .. } => write!(f, "EmptyRelation"),
                     LogicalPlan::TableScan {
                         ref source,

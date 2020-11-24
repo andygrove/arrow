@@ -138,6 +138,7 @@ impl DefaultPhysicalPlanner {
         let batch_size = ctx_state.config.batch_size;
 
         match logical_plan {
+            LogicalPlan::Alias(plan, _) => self.create_initial_plan(&plan, ctx_state),
             LogicalPlan::TableScan {
                 source, projection, ..
             } => match source {

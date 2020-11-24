@@ -115,6 +115,10 @@ fn optimize_plan(
 ) -> Result<LogicalPlan> {
     let mut new_required_columns = required_columns.clone();
     match plan {
+        LogicalPlan::Alias(plan, alias) => {
+            let new_input = optimize_plan(optimizer, &plan, &required_columns, true)?;
+            Ok(LogicalPlan::Alias(Box::new(new_input), alias.to_owned()))
+        }
         LogicalPlan::Projection {
             input,
             expr,
