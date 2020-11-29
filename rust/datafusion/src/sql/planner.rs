@@ -73,29 +73,45 @@ impl SQLRelation {
         &self.plan
     }
 
+    /// Get the SQL schema for this relation
     pub fn schema(&self) -> &SQLSchema {
         &self.schema
     }
 }
 
+/// SQLField wraps an Arrow field and adds relation names
 #[derive(Debug, Clone)]
 pub struct SQLField {
+    /// Arrow field definition
     field: Field,
+    /// Optional relation name (qualifier)
     qualifier: Option<String>,
 }
 
 impl SQLField {
+    /// Get the field name
     fn name(&self) -> &String {
         self.field.name()
     }
+
+    /// Get a string representation of this field
+    fn to_string(&self) -> String {
+        match &self.qualifier {
+            Some(q) => format!("{}.{}", q, self.name()),
+            _ => self.name().clone(),
+        }
+    }
 }
 
+/// SQLSchema wraps an Arrow schema and adds relation names
 #[derive(Debug, Clone)]
 pub struct SQLSchema {
+    /// Fields
     fields: Vec<SQLField>,
 }
 
 impl SQLSchema {
+    /// Create a SQLSchema
     pub fn new(fields: Vec<SQLField>) -> Self {
         // Until https://issues.apache.org/jira/browse/ARROW-10732 is implemented, we need
         // to ensure that schemas have unique field names
@@ -111,6 +127,7 @@ impl SQLSchema {
         Self { fields }
     }
 
+    /// Create a SQLSchema from an Arrow schema
     pub fn from(schema: &Schema) -> Self {
         Self {
             fields: schema
@@ -124,10 +141,12 @@ impl SQLSchema {
         }
     }
 
+    /// Get a list of fields
     pub fn fields(&self) -> &Vec<SQLField> {
         &self.fields
     }
 
+    /// Find the field with the given name
     pub fn field_with_name(&self, name: &str) -> Result<SQLField> {
         let matches: Vec<&SQLField> = self
             .fields
@@ -144,12 +163,18 @@ impl SQLSchema {
         }
     }
 
+    /// Find the field with the given qualified name
     pub fn field_with_qualified_name(&self, _ids: &[Ident]) -> Result<SQLField> {
         unimplemented!()
     }
 
+    /// Return a string containing a comma-separated list of fields in the schema
     pub fn to_string(&self) -> String {
-        unimplemented!()
+        self.fields
+            .iter()
+            .map(|field| field.to_string())
+            .collect::<Vec<String>>()
+            .join(", ")
     }
 }
 
