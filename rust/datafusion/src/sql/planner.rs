@@ -49,6 +49,25 @@ use sqlparser::ast::{OrderByExpr, Statement};
 use sqlparser::parser::ParserError::ParserError;
 use std::collections::HashSet;
 
+/// SQLRelation wraps a logical plan and provides additional schema information required to
+/// support qualified names in SQL queries
+#[derive(Debug, Clone)]
+pub struct SQLRelation {
+    plan: LogicalPlan,
+}
+
+impl SQLRelation {
+    /// Create a SQLRelation from an existing logical plan
+    pub fn from(plan: LogicalPlan) -> Self {
+        Self { plan }
+    }
+
+    /// Get the logical plan for this relation
+    pub fn plan(&self) -> &LogicalPlan {
+        &self.plan
+    }
+}
+
 /// The SchemaProvider trait allows the query planner to obtain meta-data about tables and
 /// functions referenced in SQL statements
 pub trait SchemaProvider {
@@ -73,15 +92,16 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
 
     /// Generate a logical plan from an DataFusion SQL statement
     pub fn statement_to_plan(&self, statement: &DFStatement) -> Result<LogicalPlan> {
-        match statement {
+        let relation = match statement {
             DFStatement::CreateExternalTable(s) => self.external_table_to_plan(&s),
             DFStatement::Statement(s) => self.sql_statement_to_plan(&s),
             DFStatement::Explain(s) => self.explain_statement_to_plan(&(*s)),
-        }
+        };
+        Ok(relation?.plan().to_owned())
     }
 
     /// Generate a logical plan from an SQL statement
-    pub fn sql_statement_to_plan(&self, sql: &Statement) -> Result<LogicalPlan> {
+    pub fn sql_statement_to_plan(&self, sql: &Statement) -> Result<SQLRelation> {
         match sql {
             Statement::Query(query) => self.query_to_plan(&query),
             _ => Err(DataFusionError::NotImplemented(
@@ -91,7 +111,7 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
     }
 
     /// Generate a logic plan from an SQL query
-    pub fn query_to_plan(&self, query: &Query) -> Result<LogicalPlan> {
+    pub fn query_to_plan(&self, query: &Query) -> Result<SQLRelation> {
         let plan = match &query.body {
             SetExpr::Select(s) => self.select_to_plan(s.as_ref()),
             _ => Err(DataFusionError::NotImplemented(format!(
@@ -109,7 +129,7 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
     pub fn external_table_to_plan(
         &self,
         statement: &CreateExternalTable,
-    ) -> Result<LogicalPlan> {
+    ) -> Result<SQLRelation> {
         let CreateExternalTable {
             name,
             columns,
@@ -140,13 +160,13 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
 
         let schema = SchemaRef::new(self.build_schema(&columns)?);
 
-        Ok(LogicalPlan::CreateExternalTable {
+        Ok(SQLRelation::from(LogicalPlan::CreateExternalTable {
             schema,
             name: name.clone(),
             location: location.clone(),
             file_type: file_type.clone(),
             has_header: *has_header,
-        })
+        }))
     }
 
     /// Generate a plan for EXPLAIN ... that will print out a plan
@@ -154,7 +174,7 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
     pub fn explain_statement_to_plan(
         &self,
         explain_plan: &ExplainPlan,
-    ) -> Result<LogicalPlan> {
+    ) -> Result<SQLRelation> {
         let verbose = explain_plan.verbose;
         let plan = self.statement_to_plan(&explain_plan.statement)?;
 
@@ -164,14 +184,13 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
         )];
 
         let schema = LogicalPlan::explain_schema();
-        let plan = Arc::new(plan);
 
-        Ok(LogicalPlan::Explain {
+        Ok(SQLRelation::from(LogicalPlan::Explain {
             verbose,
-            plan,
+            plan: Arc::new(plan.clone()),
             stringified_plans,
             schema,
-        })
+        }))
     }
 
     fn build_schema(&self, columns: &Vec<SQLColumnDef>) -> Result<Schema> {
@@ -212,9 +231,11 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
         }
     }
 
-    fn plan_from_tables(&self, from: &Vec<TableWithJoins>) -> Result<Vec<LogicalPlan>> {
+    fn plan_from_tables(&self, from: &Vec<TableWithJoins>) -> Result<Vec<SQLRelation>> {
         match from.len() {
-            0 => Ok(vec![LogicalPlanBuilder::empty(true).build()?]),
+            0 => Ok(vec![SQLRelation::from(
+                LogicalPlanBuilder::empty(true).build()?,
+            )]),
             _ => from
                 .iter()
                 .map(|t| self.plan_table_with_joins(t))
@@ -222,7 +243,7 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
         }
     }
 
-    fn plan_table_with_joins(&self, t: &TableWithJoins) -> Result<LogicalPlan> {
+    fn plan_table_with_joins(&self, t: &TableWithJoins) -> Result<SQLRelation> {
         let left = self.create_relation(&t.relation)?;
         match t.joins.len() {
             0 => Ok(left),
@@ -238,17 +259,19 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
 
     fn parse_relation_join(
         &self,
-        left: &LogicalPlan,
+        left: &SQLRelation,
         join: &Join,
-    ) -> Result<LogicalPlan> {
+    ) -> Result<SQLRelation> {
         let right = self.create_relation(&join.relation)?;
         match &join.join_operator {
             JoinOperator::Inner(constraint) => {
                 match constraint {
                     JoinConstraint::On(sql_expr) => {
                         let mut keys: Vec<(String, String)> = vec![];
-                        let join_schema =
-                            create_join_schema(left.schema(), &right.schema())?;
+                        let join_schema = create_join_schema(
+                            left.plan().schema(),
+                            &right.plan().schema(),
+                        )?;
 
                         // parse ON expression
                         let expr = self.sql_to_rex(sql_expr, &join_schema)?;
@@ -261,9 +284,16 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
                             keys.iter().map(|pair| pair.1.as_str()).collect();
 
                         // return the logical plan representing the join
-                        LogicalPlanBuilder::from(&left)
-                            .join(&right, JoinType::Inner, &left_keys, &right_keys)?
-                            .build()
+                        Ok(SQLRelation::from(
+                            LogicalPlanBuilder::from(&left.plan())
+                                .join(
+                                    &right.plan(),
+                                    JoinType::Inner,
+                                    &left_keys,
+                                    &right_keys,
+                                )?
+                                .build()?,
+                        ))
                     }
                     JoinConstraint::Using(_) => {
                         // https://issues.apache.org/jira/browse/ARROW-10728
@@ -286,18 +316,20 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
         }
     }
 
-    fn create_relation(&self, relation: &TableFactor) -> Result<LogicalPlan> {
+    fn create_relation(&self, relation: &TableFactor) -> Result<SQLRelation> {
         match relation {
             TableFactor::Table { name, .. } => {
                 let table_name = name.to_string();
                 match self.schema_provider.get_table_meta(&table_name) {
-                    Some(schema) => LogicalPlanBuilder::scan(
-                        "default",
-                        &table_name,
-                        schema.as_ref(),
-                        None,
-                    )?
-                    .build(),
+                    Some(schema) => Ok(SQLRelation::from(
+                        LogicalPlanBuilder::scan(
+                            "default",
+                            &table_name,
+                            schema.as_ref(),
+                            None,
+                        )?
+                        .build()?,
+                    )),
                     None => Err(DataFusionError::Plan(format!(
                         "no schema found for table {}",
                         name
@@ -312,7 +344,7 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
     }
 
     /// Generate a logic plan from an SQL select
-    fn select_to_plan(&self, select: &Select) -> Result<LogicalPlan> {
+    fn select_to_plan(&self, select: &Select) -> Result<SQLRelation> {
         if select.having.is_some() {
             return Err(DataFusionError::NotImplemented(
                 "HAVING is not implemented yet".to_string(),
@@ -326,7 +358,7 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
                 // build join schema
                 let mut fields = vec![];
                 for plan in &plans {
-                    fields.extend_from_slice(&plan.schema().fields());
+                    fields.extend_from_slice(&plan.plan().schema().fields());
                 }
                 check_unique_columns(&fields)?;
                 let join_schema = Schema::new(fields);
@@ -341,8 +373,8 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
                 let mut left = plans[0].clone();
                 for i in 1..plans.len() {
                     let right = &plans[i];
-                    let left_schema = left.schema();
-                    let right_schema = right.schema();
+                    let left_schema = left.plan().schema();
+                    let right_schema = right.plan().schema();
                     let mut join_keys = vec![];
                     for (l, r) in &possible_join_keys {
                         if left_schema.field_with_name(l).is_ok()
@@ -364,19 +396,28 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
                             join_keys.iter().map(|(l, _)| *l).collect();
                         let right_keys: Vec<_> =
                             join_keys.iter().map(|(_, r)| *r).collect();
-                        let builder = LogicalPlanBuilder::from(&left);
-                        left = builder
-                            .join(right, JoinType::Inner, &left_keys, &right_keys)?
-                            .build()?;
+                        let builder = LogicalPlanBuilder::from(&left.plan());
+                        left = SQLRelation::from(
+                            builder
+                                .join(
+                                    &right.plan(),
+                                    JoinType::Inner,
+                                    &left_keys,
+                                    &right_keys,
+                                )?
+                                .build()?,
+                        );
                     }
                     all_join_keys.extend_from_slice(&join_keys);
                 }
 
                 // remove join expressions from filter
                 match remove_join_expressions(&filter_expr, &all_join_keys)? {
-                    Some(filter_expr) => {
-                        LogicalPlanBuilder::from(&left).filter(filter_expr)?.build()
-                    }
+                    Some(filter_expr) => Ok(SQLRelation::from(
+                        LogicalPlanBuilder::from(&left.plan())
+                            .filter(filter_expr)?
+                            .build()?,
+                    )),
                     _ => Ok(left),
                 }
             }
@@ -395,7 +436,7 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
         let projection_expr: Vec<Expr> = select
             .projection
             .iter()
-            .map(|e| self.sql_select_to_rex(&e, &plan.schema()))
+            .map(|e| self.sql_select_to_rex(&e, &plan.plan().schema()))
             .collect::<Result<Vec<Expr>>>()?;
 
         let aggr_expr: Vec<Expr> = projection_expr
@@ -414,21 +455,25 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
     }
 
     /// Wrap a plan in a projection
-    fn project(&self, input: &LogicalPlan, expr: Vec<Expr>) -> Result<LogicalPlan> {
-        LogicalPlanBuilder::from(input).project(expr)?.build()
+    fn project(&self, input: &SQLRelation, expr: Vec<Expr>) -> Result<SQLRelation> {
+        Ok(SQLRelation::from(
+            LogicalPlanBuilder::from(input.plan())
+                .project(expr)?
+                .build()?,
+        ))
     }
 
     /// Wrap a plan in an aggregate
     fn aggregate(
         &self,
-        input: &LogicalPlan,
+        input: &SQLRelation,
         projection_expr: Vec<Expr>,
         group_by: &Vec<SQLExpr>,
         aggr_expr: Vec<Expr>,
-    ) -> Result<LogicalPlan> {
+    ) -> Result<SQLRelation> {
         let group_expr: Vec<Expr> = group_by
             .iter()
-            .map(|e| self.sql_to_rex(&e, &input.schema()))
+            .map(|e| self.sql_to_rex(&e, &input.plan().schema()))
             .collect::<Result<Vec<Expr>>>()?;
 
         let group_by_count = group_expr.len();
@@ -440,16 +485,19 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
             ));
         }
 
-        let plan = LogicalPlanBuilder::from(&input)
-            .aggregate(group_expr, aggr_expr)?
-            .build()?;
+        let plan = SQLRelation::from(
+            LogicalPlanBuilder::from(input.plan())
+                .aggregate(group_expr, aggr_expr)?
+                .build()?,
+        );
 
         // optionally wrap in projection to preserve final order of fields
         let expected_columns: Vec<String> = projection_expr
             .iter()
-            .map(|e| e.name(input.schema()))
+            .map(|e| e.name(input.plan().schema()))
             .collect::<Result<Vec<_>>>()?;
         let columns: Vec<String> = plan
+            .plan()
             .schema()
             .fields()
             .iter()
@@ -469,17 +517,19 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
     }
 
     /// Wrap a plan in a limit
-    fn limit(&self, input: &LogicalPlan, limit: &Option<SQLExpr>) -> Result<LogicalPlan> {
+    fn limit(&self, input: &SQLRelation, limit: &Option<SQLExpr>) -> Result<SQLRelation> {
         match *limit {
             Some(ref limit_expr) => {
-                let n = match self.sql_to_rex(&limit_expr, &input.schema())? {
+                let n = match self.sql_to_rex(&limit_expr, &input.plan().schema())? {
                     Expr::Literal(ScalarValue::Int64(Some(n))) => Ok(n as usize),
                     _ => Err(DataFusionError::Plan(
                         "Unexpected expression for LIMIT clause".to_string(),
                     )),
                 }?;
 
-                LogicalPlanBuilder::from(&input).limit(n)?.build()
+                Ok(SQLRelation::from(
+                    LogicalPlanBuilder::from(&input.plan()).limit(n)?.build()?,
+                ))
             }
             _ => Ok(input.clone()),
         }
@@ -488,14 +538,14 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
     /// Wrap the logical in a sort
     fn order_by(
         &self,
-        plan: &LogicalPlan,
+        plan: &SQLRelation,
         order_by: &Vec<OrderByExpr>,
-    ) -> Result<LogicalPlan> {
+    ) -> Result<SQLRelation> {
         if order_by.len() == 0 {
             return Ok(plan.clone());
         }
 
-        let input_schema = plan.schema();
+        let input_schema = plan.plan().schema();
         let order_by_rex: Result<Vec<Expr>> = order_by
             .iter()
             .map(|e| {
@@ -509,7 +559,11 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
             })
             .collect();
 
-        LogicalPlanBuilder::from(&plan).sort(order_by_rex?)?.build()
+        Ok(SQLRelation::from(
+            LogicalPlanBuilder::from(plan.plan())
+                .sort(order_by_rex?)?
+                .build()?,
+        ))
     }
 
     /// Generate a relational expression from a select SQL expression

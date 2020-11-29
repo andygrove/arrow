@@ -174,7 +174,7 @@ impl ExecutionContext {
 
         // create a query planner
         let query_planner = SqlToRel::new(&self.state);
-        Ok(query_planner.statement_to_plan(&statements[0])?)
+        query_planner.statement_to_plan(&statements[0])
     }
 
     /// Register variable
