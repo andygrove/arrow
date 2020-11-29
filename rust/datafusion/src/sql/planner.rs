@@ -52,20 +52,42 @@ use sqlparser::parser::ParserError::ParserError;
 /// support qualified names in SQL queries
 #[derive(Debug, Clone)]
 pub struct SQLRelation {
+    /// Logical plan
     plan: LogicalPlan,
+    /// Schema
     schema: SQLSchema,
+    /// Optional relation name/alias
+    alias: Option<String>,
 }
 
 impl SQLRelation {
     /// Create a SQLRelation from an existing logical plan
     pub fn from(plan: LogicalPlan) -> Self {
         let schema = SQLSchema::from(plan.schema());
-        Self { plan, schema }
+        Self {
+            plan,
+            schema,
+            alias: None,
+        }
+    }
+
+    /// Create a SQLRelation from an existing logical plan
+    pub fn with_alias(plan: LogicalPlan, alias: String) -> Self {
+        let schema = SQLSchema::qualified(plan.schema(), &alias);
+        Self {
+            plan,
+            schema,
+            alias: Some(alias),
+        }
     }
 
     /// Create a SQLRelation from an existing logical plan
     pub fn with_schema(plan: LogicalPlan, schema: SQLSchema) -> Self {
-        Self { plan, schema }
+        Self {
+            plan,
+            schema,
+            alias: None,
+        }
     }
 
     /// Get the logical plan for this relation
@@ -113,17 +135,7 @@ pub struct SQLSchema {
 impl SQLSchema {
     /// Create a SQLSchema
     pub fn new(fields: Vec<SQLField>) -> Self {
-        // Until https://issues.apache.org/jira/browse/ARROW-10732 is implemented, we need
-        // to ensure that schemas have unique field names
-        // let unique_field_names = fields.iter().map(|f| f.name()).collect::<HashSet<_>>();
-        // if unique_field_names.len() == fields.len() {
-        //     Ok(())
-        // } else {
-        //     Err(DataFusionError::Plan(
-        //         "JOIN would result in schema with duplicate column names".to_string(),
-        //     ))
-        // }
-
+        // TODO assert that field names are unique (taking qualifier into account)
         Self { fields }
     }
 
@@ -136,6 +148,20 @@ impl SQLSchema {
                 .map(|f| SQLField {
                     field: f.clone(),
                     qualifier: None,
+                })
+                .collect(),
+        }
+    }
+
+    /// Create a SQLSchema from an Arrow schema
+    pub fn qualified(schema: &Schema, qualifier: &str) -> Self {
+        Self {
+            fields: schema
+                .fields()
+                .iter()
+                .map(|f| SQLField {
+                    field: f.clone(),
+                    qualifier: Some(qualifier.to_owned()),
                 })
                 .collect(),
         }
@@ -164,8 +190,22 @@ impl SQLSchema {
     }
 
     /// Find the field with the given qualified name
-    pub fn field_with_qualified_name(&self, _ids: &[Ident]) -> Result<SQLField> {
-        unimplemented!()
+    pub fn field_with_qualified_name(&self, ids: &[Ident]) -> Result<SQLField> {
+        assert!(ids.len() == 2); //TODO
+        let matches: Vec<&SQLField> = self
+            .fields
+            .iter()
+            .filter(|field| field.qualifier == Some(ids[0].to_string()))
+            .filter(|field| field.name() == &ids[1].to_string())
+            .collect();
+        match matches.len() {
+            0 => Err(DataFusionError::Plan(format!("No field named '{:?}'", ids))),
+            1 => Ok(matches[0].to_owned()),
+            _ => Err(DataFusionError::Plan(format!(
+                "Ambiguous reference to qualified field named '{:?}'",
+                ids
+            ))),
+        }
     }
 
     /// Return a string containing a comma-separated list of fields in the schema
@@ -426,18 +466,23 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
 
     fn create_relation(&self, relation: &TableFactor) -> Result<SQLRelation> {
         match relation {
-            TableFactor::Table { name, .. } => {
+            TableFactor::Table { name, alias, .. } => {
                 let table_name = name.to_string();
                 match self.schema_provider.get_table_meta(&table_name) {
-                    Some(schema) => Ok(SQLRelation::from(
-                        LogicalPlanBuilder::scan(
+                    Some(schema) => {
+                        let plan = LogicalPlanBuilder::scan(
                             "default",
                             &table_name,
                             schema.as_ref(),
                             None,
                         )?
-                        .build()?,
-                    )),
+                        .build()?;
+                        let alias = match alias {
+                            Some(alias) => alias.name.to_string(),
+                            _ => table_name,
+                        };
+                        Ok(SQLRelation::with_alias(plan, alias))
+                    }
                     None => Err(DataFusionError::Plan(format!(
                         "no schema found for table {}",
                         name
@@ -722,7 +767,10 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
                     Ok(Expr::ScalarVariable(var_names))
                 } else {
                     match schema.field_with_qualified_name(ids) {
-                        Ok(field) => Ok(Expr::Column(field.name().clone())),
+                        Ok(field) => {
+                            //TODO: need Column to have Vec<String>
+                            Ok(Expr::Column(field.to_string()))
+                        }
                         Err(_) => Err(DataFusionError::Plan(format!(
                             "Invalid identifier '{}' for schema {}",
                             var_names.join("."),
@@ -1366,6 +1414,19 @@ mod tests {
             FROM person \
             JOIN orders \
             ON id = customer_id";
+        let expected = "Projection: #id, #order_id\
+        \n  Join: id = customer_id\
+        \n    TableScan: person projection=None\
+        \n    TableScan: orders projection=None";
+        quick_test(sql, expected);
+    }
+
+    #[test]
+    fn equijoin_explicit_syntax_aliases() {
+        let sql = "SELECT p.id, o.order_id \
+            FROM person p \
+            JOIN orders o \
+            ON p.id = o.customer_id";
         let expected = "Projection: #id, #order_id\
         \n  Join: id = customer_id\
         \n    TableScan: person projection=None\
