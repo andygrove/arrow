@@ -40,31 +40,116 @@ use arrow::datatypes::*;
 use super::parser::ExplainPlan;
 use crate::prelude::JoinType;
 use sqlparser::ast::{
-    BinaryOperator, DataType as SQLDataType, Expr as SQLExpr, Join, JoinConstraint,
-    JoinOperator, Query, Select, SelectItem, SetExpr, TableFactor, TableWithJoins,
-    UnaryOperator, Value,
+    BinaryOperator, DataType as SQLDataType, Expr as SQLExpr, Ident, Join,
+    JoinConstraint, JoinOperator, Query, Select, SelectItem, SetExpr, TableFactor,
+    TableWithJoins, UnaryOperator, Value,
 };
 use sqlparser::ast::{ColumnDef as SQLColumnDef, ColumnOption};
 use sqlparser::ast::{OrderByExpr, Statement};
 use sqlparser::parser::ParserError::ParserError;
-use std::collections::HashSet;
 
 /// SQLRelation wraps a logical plan and provides additional schema information required to
 /// support qualified names in SQL queries
 #[derive(Debug, Clone)]
 pub struct SQLRelation {
     plan: LogicalPlan,
+    schema: SQLSchema,
 }
 
 impl SQLRelation {
     /// Create a SQLRelation from an existing logical plan
     pub fn from(plan: LogicalPlan) -> Self {
-        Self { plan }
+        let schema = SQLSchema::from(plan.schema());
+        Self { plan, schema }
+    }
+
+    /// Create a SQLRelation from an existing logical plan
+    pub fn with_schema(plan: LogicalPlan, schema: SQLSchema) -> Self {
+        Self { plan, schema }
     }
 
     /// Get the logical plan for this relation
     pub fn plan(&self) -> &LogicalPlan {
         &self.plan
+    }
+
+    pub fn schema(&self) -> &SQLSchema {
+        &self.schema
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SQLField {
+    field: Field,
+    qualifier: Option<String>,
+}
+
+impl SQLField {
+    fn name(&self) -> &String {
+        self.field.name()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SQLSchema {
+    fields: Vec<SQLField>,
+}
+
+impl SQLSchema {
+    pub fn new(fields: Vec<SQLField>) -> Self {
+        // Until https://issues.apache.org/jira/browse/ARROW-10732 is implemented, we need
+        // to ensure that schemas have unique field names
+        // let unique_field_names = fields.iter().map(|f| f.name()).collect::<HashSet<_>>();
+        // if unique_field_names.len() == fields.len() {
+        //     Ok(())
+        // } else {
+        //     Err(DataFusionError::Plan(
+        //         "JOIN would result in schema with duplicate column names".to_string(),
+        //     ))
+        // }
+
+        Self { fields }
+    }
+
+    pub fn from(schema: &Schema) -> Self {
+        Self {
+            fields: schema
+                .fields()
+                .iter()
+                .map(|f| SQLField {
+                    field: f.clone(),
+                    qualifier: None,
+                })
+                .collect(),
+        }
+    }
+
+    pub fn fields(&self) -> &Vec<SQLField> {
+        &self.fields
+    }
+
+    pub fn field_with_name(&self, name: &str) -> Result<SQLField> {
+        let matches: Vec<&SQLField> = self
+            .fields
+            .iter()
+            .filter(|field| field.name() == name)
+            .collect();
+        match matches.len() {
+            0 => Err(DataFusionError::Plan(format!("No field named '{}'", name))),
+            1 => Ok(matches[0].to_owned()),
+            _ => Err(DataFusionError::Plan(format!(
+                "Ambiguous reference to field named '{}'",
+                name
+            ))),
+        }
+    }
+
+    pub fn field_with_qualified_name(&self, _ids: &[Ident]) -> Result<SQLField> {
+        unimplemented!()
+    }
+
+    pub fn to_string(&self) -> String {
+        unimplemented!()
     }
 }
 
@@ -268,10 +353,8 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
                 match constraint {
                     JoinConstraint::On(sql_expr) => {
                         let mut keys: Vec<(String, String)> = vec![];
-                        let join_schema = create_join_schema(
-                            left.plan().schema(),
-                            &right.plan().schema(),
-                        )?;
+                        let join_schema =
+                            create_join_schema(left.schema(), right.schema())?;
 
                         // parse ON expression
                         let expr = self.sql_to_rex(sql_expr, &join_schema)?;
@@ -358,10 +441,9 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
                 // build join schema
                 let mut fields = vec![];
                 for plan in &plans {
-                    fields.extend_from_slice(&plan.plan().schema().fields());
+                    fields.extend_from_slice(&plan.schema().fields());
                 }
-                check_unique_columns(&fields)?;
-                let join_schema = Schema::new(fields);
+                let join_schema = SQLSchema::new(fields);
 
                 let filter_expr = self.sql_to_rex(predicate_expr, &join_schema)?;
 
@@ -436,7 +518,7 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
         let projection_expr: Vec<Expr> = select
             .projection
             .iter()
-            .map(|e| self.sql_select_to_rex(&e, &plan.plan().schema()))
+            .map(|e| self.sql_select_to_rex(&e, &plan.schema()))
             .collect::<Result<Vec<Expr>>>()?;
 
         let aggr_expr: Vec<Expr> = projection_expr
@@ -473,7 +555,7 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
     ) -> Result<SQLRelation> {
         let group_expr: Vec<Expr> = group_by
             .iter()
-            .map(|e| self.sql_to_rex(&e, &input.plan().schema()))
+            .map(|e| self.sql_to_rex(&e, input.schema()))
             .collect::<Result<Vec<Expr>>>()?;
 
         let group_by_count = group_expr.len();
@@ -520,7 +602,7 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
     fn limit(&self, input: &SQLRelation, limit: &Option<SQLExpr>) -> Result<SQLRelation> {
         match *limit {
             Some(ref limit_expr) => {
-                let n = match self.sql_to_rex(&limit_expr, &input.plan().schema())? {
+                let n = match self.sql_to_rex(&limit_expr, input.schema())? {
                     Expr::Literal(ScalarValue::Int64(Some(n))) => Ok(n as usize),
                     _ => Err(DataFusionError::Plan(
                         "Unexpected expression for LIMIT clause".to_string(),
@@ -545,12 +627,11 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
             return Ok(plan.clone());
         }
 
-        let input_schema = plan.plan().schema();
         let order_by_rex: Result<Vec<Expr>> = order_by
             .iter()
             .map(|e| {
                 Ok(Expr::Sort {
-                    expr: Box::new(self.sql_to_rex(&e.expr, &input_schema).unwrap()),
+                    expr: Box::new(self.sql_to_rex(&e.expr, plan.schema()).unwrap()),
                     // by default asc
                     asc: e.asc.unwrap_or(true),
                     // by default nulls first to be consistent with spark
@@ -567,7 +648,7 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
     }
 
     /// Generate a relational expression from a select SQL expression
-    fn sql_select_to_rex(&self, sql: &SelectItem, schema: &Schema) -> Result<Expr> {
+    fn sql_select_to_rex(&self, sql: &SelectItem, schema: &SQLSchema) -> Result<Expr> {
         match sql {
             SelectItem::UnnamedExpr(expr) => self.sql_to_rex(expr, schema),
             SelectItem::ExprWithAlias { expr, alias } => Ok(Alias(
@@ -582,7 +663,7 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
     }
 
     /// Generate a relational expression from a SQL expression
-    pub fn sql_to_rex(&self, sql: &SQLExpr, schema: &Schema) -> Result<Expr> {
+    pub fn sql_to_rex(&self, sql: &SQLExpr, schema: &SQLSchema) -> Result<Expr> {
         match sql {
             SQLExpr::Value(Value::Number(n)) => match n.parse::<i64>() {
                 Ok(n) => Ok(lit(n)),
@@ -615,11 +696,14 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
                 if &var_names[0][0..1] == "@" {
                     Ok(Expr::ScalarVariable(var_names))
                 } else {
-                    Err(DataFusionError::Plan(format!(
-                        "Invalid compound identifier '{:?}' for schema {}",
-                        var_names,
-                        schema.to_string()
-                    )))
+                    match schema.field_with_qualified_name(ids) {
+                        Ok(field) => Ok(Expr::Column(field.name().clone())),
+                        Err(_) => Err(DataFusionError::Plan(format!(
+                            "Invalid identifier '{}' for schema {}",
+                            var_names.join("."),
+                            schema.to_string()
+                        ))),
+                    }
                 }
             }
 
@@ -800,25 +884,11 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
     }
 }
 
-fn create_join_schema(left: &SchemaRef, right: &SchemaRef) -> Result<Schema> {
+fn create_join_schema(left: &SQLSchema, right: &SQLSchema) -> Result<SQLSchema> {
     let mut fields = vec![];
     fields.extend_from_slice(&left.fields());
     fields.extend_from_slice(&right.fields());
-    check_unique_columns(&fields)?;
-    Ok(Schema::new(fields))
-}
-
-fn check_unique_columns(fields: &[Field]) -> Result<()> {
-    // Until https://issues.apache.org/jira/browse/ARROW-10732 is implemented, we need
-    // to ensure that schemas have unique field names
-    let unique_field_names = fields.iter().map(|f| f.name()).collect::<HashSet<_>>();
-    if unique_field_names.len() == fields.len() {
-        Ok(())
-    } else {
-        Err(DataFusionError::Plan(
-            "JOIN would result in schema with duplicate column names".to_string(),
-        ))
-    }
+    Ok(SQLSchema::new(fields))
 }
 
 /// Remove join expressions from a filter expression
