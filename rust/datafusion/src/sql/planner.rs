@@ -432,16 +432,18 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
                             keys.iter().map(|pair| pair.1.as_str()).collect();
 
                         // return the logical plan representing the join
-                        Ok(SQLRelation::from(
-                            LogicalPlanBuilder::from(&left.plan())
-                                .join(
-                                    &right.plan(),
-                                    JoinType::Inner,
-                                    &left_keys,
-                                    &right_keys,
-                                )?
-                                .build()?,
-                        ))
+                        let plan = LogicalPlanBuilder::from(&left.plan())
+                            .join(
+                                &right.plan(),
+                                JoinType::Inner,
+                                &left_keys,
+                                &right_keys,
+                            )?
+                            .build()?;
+
+                        println!("parse_relation_join returning plan with schema: {}", join_schema.to_string());
+
+                        Ok(SQLRelation::with_schema(plan, join_schema))
                     }
                     JoinConstraint::Using(_) => {
                         // https://issues.apache.org/jira/browse/ARROW-10728
@@ -525,8 +527,8 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
                 let mut left = plans[0].clone();
                 for i in 1..plans.len() {
                     let right = &plans[i];
-                    let left_schema = left.plan().schema();
-                    let right_schema = right.plan().schema();
+                    let left_schema = left.schema();
+                    let right_schema = right.schema();
                     let mut join_keys = vec![];
                     for (l, r) in &possible_join_keys {
                         if left_schema.field_with_name(l).is_ok()
