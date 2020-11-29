@@ -441,7 +441,10 @@ impl<'a, S: SchemaProvider> SqlToRel<'a, S> {
                             )?
                             .build()?;
 
-                        println!("parse_relation_join returning plan with schema: {}", join_schema.to_string());
+                        println!(
+                            "parse_relation_join returning plan with schema: {}",
+                            join_schema.to_string()
+                        );
 
                         Ok(SQLRelation::with_schema(plan, join_schema))
                     }
