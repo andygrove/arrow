@@ -69,18 +69,43 @@ impl DFSchema {
         let mut fields = self.fields.clone();
         fields.extend_from_slice(schema.fields().as_slice());
 
-        let mut unique_fields = HashSet::new();
+        let mut qualified_names: HashSet<(&str, &str)> = HashSet::new();
+        let mut unqualified_names = HashSet::new();
         for field in &fields {
-            unique_fields.insert(field.name());
+            if let Some(qualifier) = field.qualifier() {
+                if !qualified_names.insert((qualifier, field.name())) {
+                    return Err(DataFusionError::Plan(format!(
+                        "Joined schema would contain duplicate qualified field name '{}'",
+                        field.qualified_name()
+                    )));
+                }
+            } else {
+                if !unqualified_names.insert(field.name()) {
+                    return Err(DataFusionError::Plan(
+                        format!("Joined schema would contain duplicate unqualified field name '{}'", field.name())
+                    ));
+                }
+            }
         }
 
-        if unique_fields.len() == fields.len() {
-            Ok(Self { fields })
-        } else {
-            Err(DataFusionError::Plan(
-                "Joined schema would contain duplicate field names".to_string(),
-            ))
+        // check for mix of qualified and unqualified field with same unqualified name
+        // note that we need to sort the contents of the HashSet first so that errors are
+        // deterministic
+        let mut qualified_names: Vec<&(&str, &str)> = qualified_names.iter().collect();
+        qualified_names.sort_by(|a, b| {
+            let a = format!("{}.{}", a.0, a.1);
+            let b = format!("{}.{}", b.0, b.1);
+            a.cmp(&b)
+        });
+        for (qualifier, name) in &qualified_names {
+            if unqualified_names.contains(name) {
+                return Err(DataFusionError::Plan(
+                    format!("Joined schema would contain qualified field name '{}.{}' and unqualified field name '{}' which would be ambiguous", qualifier, name, name)
+                ));
+            }
         }
+
+        Ok(Self { fields })
     }
 
     /// Get a list of fields
@@ -171,23 +196,21 @@ impl DFField {
         self.field.name()
     }
 
-    fn to_string(&self) -> String {
+    fn qualified_name(&self) -> String {
         if let Some(relation_name) = &self.qualifier {
             format!("{}.{}", relation_name, self.field.name())
         } else {
-            self.field.name().to_string()
+            self.field.name().to_owned()
         }
     }
-}
 
-fn convert_fields(fields: &[Field], qualifier: Option<String>) -> Vec<DFField> {
-    fields
-        .iter()
-        .map(|f| DFField {
-            field: f.clone(),
-            qualifier: qualifier.clone(),
-        })
-        .collect()
+    fn qualifier(&self) -> &Option<String> {
+        &self.qualifier
+    }
+
+    fn to_string(&self) -> String {
+        self.qualified_name()
+    }
 }
 
 #[cfg(test)]
@@ -231,11 +254,32 @@ mod tests {
     }
 
     #[test]
+    fn join_qualified_duplicate() -> Result<()> {
+        let left = DFSchema::from_qualified("t1", &test_schema());
+        let right = DFSchema::from_qualified("t1", &test_schema());
+        let join = left.join(&right);
+        assert!(join.is_err());
+        assert_eq!("Error during planning: Joined schema would contain duplicate qualified field name \'t1.c0\'", &format!("{}", join.err().unwrap()));
+        Ok(())
+    }
+
+    #[test]
     fn join_unqualified() -> Result<()> {
         let left = DFSchema::from(&test_schema());
         let right = DFSchema::from(&test_schema());
         let join = left.join(&right);
         assert!(join.is_err());
+        assert_eq!("Error during planning: Joined schema would contain duplicate unqualified field name \'c0\'", &format!("{}", join.err().unwrap()));
+        Ok(())
+    }
+
+    #[test]
+    fn join_mixed() -> Result<()> {
+        let left = DFSchema::from_qualified("t1", &test_schema());
+        let right = DFSchema::from(&test_schema());
+        let join = left.join(&right);
+        assert!(join.is_err());
+        assert_eq!("Error during planning: Joined schema would contain qualified field name \'t1.c0\' and unqualified field name \'c0\' which would be ambiguous", &format!("{}", join.err().unwrap()));
         Ok(())
     }
 
