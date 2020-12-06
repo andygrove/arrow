@@ -17,7 +17,7 @@
 //! This module provides logic for displaying LogicalPlans in various styles
 
 use super::{LogicalPlan, PlanVisitor};
-use arrow::datatypes::Schema;
+use crate::logical_plan::DFSchema;
 use std::fmt;
 
 /// Formats plans with a single line per node. For example:
@@ -85,19 +85,24 @@ impl<'a, 'b> PlanVisitor for IndentVisitor<'a, 'b> {
 ///
 /// ```
 /// use arrow::datatypes::{Field, Schema, DataType};
+/// use datafusion::logical_plan::DFSchema;
+/// # use datafusion::error::Result;
 /// # use datafusion::logical_plan::display_schema;
-/// let schema = Schema::new(vec![
+/// # fn main() -> Result<()> {
+/// let schema = DFSchema::from(&Schema::new(vec![
 ///     Field::new("id", DataType::Int32, false),
 ///     Field::new("first_name", DataType::Utf8, true),
-///  ]);
+///  ]))?;
 ///
 ///  assert_eq!(
 ///      "[id:Int32, first_name:Utf8;N]",
 ///      format!("{}", display_schema(&schema))
 ///  );
+/// # Ok(())
+/// # }
 /// ```
-pub fn display_schema<'a>(schema: &'a Schema) -> impl fmt::Display + 'a {
-    struct Wrapper<'a>(&'a Schema);
+pub fn display_schema<'a>(schema: &'a DFSchema) -> impl fmt::Display + 'a {
+    struct Wrapper<'a>(&'a DFSchema);
 
     impl<'a> fmt::Display for Wrapper<'a> {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -110,7 +115,7 @@ pub fn display_schema<'a>(schema: &'a Schema) -> impl fmt::Display + 'a {
                 write!(
                     f,
                     "{}:{:?}{}",
-                    field.name(),
+                    field.qualified_name(),
                     field.data_type(),
                     nullable_str
                 )?;
@@ -241,26 +246,43 @@ impl<'a, 'b> PlanVisitor for GraphvizVisitor<'a, 'b> {
 
 #[cfg(test)]
 mod tests {
-    use arrow::datatypes::{DataType, Field};
-
     use super::*;
+    use crate::error::Result;
+    use crate::logical_plan::DFField;
+    use arrow::datatypes::DataType;
 
     #[test]
-    fn test_display_empty_schema() {
-        let schema = Schema::new(vec![]);
+    fn test_display_empty_schema() -> Result<()> {
+        let schema = DFSchema::new(vec![])?;
         assert_eq!("[]", format!("{}", display_schema(&schema)));
+        Ok(())
     }
 
     #[test]
-    fn test_display_schema() {
-        let schema = Schema::new(vec![
-            Field::new("id", DataType::Int32, false),
-            Field::new("first_name", DataType::Utf8, true),
-        ]);
+    fn test_display_schema() -> Result<()> {
+        let schema = DFSchema::new(vec![
+            DFField::new(None, "id", DataType::Int32, false),
+            DFField::new(None, "first_name", DataType::Utf8, true),
+        ])?;
 
         assert_eq!(
             "[id:Int32, first_name:Utf8;N]",
             format!("{}", display_schema(&schema))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_display_qualified_schema() -> Result<()> {
+        let schema = DFSchema::new(vec![
+            DFField::new(Some("t1"), "id", DataType::Int32, false),
+            DFField::new(None, "first_name", DataType::Utf8, true),
+        ])?;
+
+        assert_eq!(
+            "[t1.id:Int32, first_name:Utf8;N]",
+            format!("{}", display_schema(&schema))
+        );
+        Ok(())
     }
 }

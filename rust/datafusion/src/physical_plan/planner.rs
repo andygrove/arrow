@@ -22,9 +22,7 @@ use std::sync::Arc;
 use super::{aggregates, empty::EmptyExec, expressions::binary, functions, udaf};
 use crate::error::{DataFusionError, Result};
 use crate::execution::context::ExecutionContextState;
-use crate::logical_plan::{
-    Expr, LogicalPlan, PlanType, StringifiedPlan, TableSource, UserDefinedLogicalNode,
-};
+use crate::logical_plan::{Expr, LogicalPlan, PlanType, StringifiedPlan, TableSource, UserDefinedLogicalNode, DFSchema};
 use crate::physical_plan::csv::{CsvExec, CsvReadOptions};
 use crate::physical_plan::explain::ExplainExec;
 use crate::physical_plan::expressions::{CaseExpr, Column, Literal, PhysicalSortExpr};
@@ -162,7 +160,7 @@ impl DefaultPhysicalPlanner {
                 ..
             } => Ok(Arc::new(MemoryExec::try_new(
                 data,
-                Arc::new(projected_schema.as_ref().to_owned()),
+                Arc::new(projected_schema.as_ref().to_owned().into()),
                 projection.to_owned(),
             )?)),
             LogicalPlan::CsvScan {
@@ -189,18 +187,17 @@ impl DefaultPhysicalPlanner {
                 batch_size,
             )?)),
             LogicalPlan::Projection { input, expr, .. } => {
-                let input = self.create_physical_plan(input, ctx_state)?;
-                let input_schema = input.as_ref().schema();
+                let physical_input = self.create_physical_plan(input, ctx_state)?;
                 let runtime_expr = expr
                     .iter()
                     .map(|e| {
                         tuple_err((
-                            self.create_physical_expr(e, &input_schema, &ctx_state),
-                            e.name(&input_schema),
+                            self.create_physical_expr(e, physical_input.as_ref().schema().as_ref(), &ctx_state),
+                            e.name(&input.schema()),
                         ))
                     })
                     .collect::<Result<Vec<_>>>()?;
-                Ok(Arc::new(ProjectionExec::try_new(runtime_expr, input)?))
+                Ok(Arc::new(ProjectionExec::try_new(runtime_expr, physical_input)?))
             }
             LogicalPlan::Aggregate {
                 input,
@@ -209,28 +206,26 @@ impl DefaultPhysicalPlanner {
                 ..
             } => {
                 // Initially need to perform the aggregate and then merge the partitions
-                let input = self.create_physical_plan(input, ctx_state)?;
-                let input_schema = input.as_ref().schema();
-
+                let input_exec = self.create_physical_plan(input, ctx_state)?;
                 let groups = group_expr
                     .iter()
                     .map(|e| {
                         tuple_err((
-                            self.create_physical_expr(e, &input_schema, ctx_state),
-                            e.name(&input_schema),
+                            self.create_physical_expr(e, &input_exec.schema(), ctx_state),
+                            e.name(&input.as_ref().schema()),
                         ))
                     })
                     .collect::<Result<Vec<_>>>()?;
                 let aggregates = aggr_expr
                     .iter()
-                    .map(|e| self.create_aggregate_expr(e, &input_schema, ctx_state))
+                    .map(|e| self.create_aggregate_expr(e, &input.schema(), ctx_state))
                     .collect::<Result<Vec<_>>>()?;
 
                 let initial_aggr = Arc::new(HashAggregateExec::try_new(
                     AggregateMode::Partial,
                     groups.clone(),
                     aggregates.clone(),
-                    input,
+                    input_exec,
                 )?);
 
                 let final_group: Vec<Arc<dyn PhysicalExpr>> =
@@ -316,7 +311,7 @@ impl DefaultPhysicalPlanner {
                 schema,
             } => Ok(Arc::new(EmptyExec::new(
                 *produce_one_row,
-                Arc::new(schema.as_ref().clone()),
+                Arc::new(schema.as_ref().to_owned().into()),
             ))),
             LogicalPlan::Limit { input, n, .. } => {
                 let limit = *n;
@@ -367,8 +362,7 @@ impl DefaultPhysicalPlanner {
                         format!("{:#?}", input),
                     ));
                 }
-                let schema_ref = Arc::new(schema.as_ref().clone());
-                Ok(Arc::new(ExplainExec::new(schema_ref, stringified_plans)))
+                Ok(Arc::new(ExplainExec::new(schema.as_ref().to_owned().into(), stringified_plans)))
             }
             LogicalPlan::Extension { node } => {
                 let inputs = node
@@ -386,7 +380,7 @@ impl DefaultPhysicalPlanner {
                 // Ensure the ExecutionPlan's  schema matches the
                 // declared logical schema to catch and warn about
                 // logic errors when creating user defined plans.
-                if plan.schema() != *node.schema() {
+                if plan.schema() != node.schema().as_ref().to_owned().into() {
                     Err(DataFusionError::Plan(format!(
                         "Extension planner for {:?} created an ExecutionPlan with mismatched schema. \
                          LogicalPlan schema: {:?}, ExecutionPlan schema: {:?}",
@@ -546,13 +540,14 @@ impl DefaultPhysicalPlanner {
     pub fn create_aggregate_expr(
         &self,
         e: &Expr,
-        input_schema: &Schema,
+        physical_input_schema: &Schema,
+        logical_input_schema: &DFSchema,
         ctx_state: &ExecutionContextState,
     ) -> Result<Arc<dyn AggregateExpr>> {
         // unpack aliased logical expressions, e.g. "sum(col) as total"
         let (name, e) = match e {
             Expr::Alias(sub_expr, alias) => (alias.clone(), sub_expr.as_ref()),
-            _ => (e.name(input_schema)?, e),
+            _ => (e.name(logical_input_schema)?, e),
         };
 
         match e {
@@ -564,13 +559,14 @@ impl DefaultPhysicalPlanner {
             } => {
                 let args = args
                     .iter()
-                    .map(|e| self.create_physical_expr(e, input_schema, ctx_state))
+                    .map(|e| self.create_physical_expr(e, physical_input_schema, ctx_state))
                     .collect::<Result<Vec<_>>>()?;
                 aggregates::create_aggregate_expr(
                     fun,
                     *distinct,
                     &args,
-                    input_schema,
+                    physical_input_schema,
+                    logical_input_schema,
                     name,
                 )
             }
@@ -643,6 +639,7 @@ mod tests {
     use async_trait::async_trait;
     use fmt::Debug;
     use std::{any::Any, collections::HashMap, fmt};
+    use crate::logical_plan::{DFSchemaRef, DFField, DFSchema};
 
     fn make_ctx_state() -> ExecutionContextState {
         ExecutionContextState {
@@ -804,13 +801,14 @@ mod tests {
 
     /// An example extension node that doesn't do anything
     struct NoOpExtensionNode {
-        schema: SchemaRef,
+        schema: DFSchemaRef,
     }
 
     impl Default for NoOpExtensionNode {
         fn default() -> Self {
             Self {
-                schema: SchemaRef::new(Schema::new(vec![Field::new(
+                schema: DFSchemaRef::new(DFSchema::new(vec![DFField::new(
+                    None,
                     "a",
                     DataType::Int32,
                     false,
@@ -834,7 +832,7 @@ mod tests {
             vec![]
         }
 
-        fn schema(&self) -> &SchemaRef {
+        fn schema(&self) -> &DFSchemaRef {
             &self.schema
         }
 
