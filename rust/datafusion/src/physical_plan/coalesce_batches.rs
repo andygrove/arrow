@@ -194,7 +194,8 @@ impl RecordBatchStream for CoalesceBatchesStream {
     }
 }
 
-fn concat_batches(
+/// Concatenate batches
+pub fn concat_batches(
     schema: &SchemaRef,
     batches: &[RecordBatch],
     row_count: usize,

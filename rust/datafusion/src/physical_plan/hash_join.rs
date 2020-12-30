@@ -46,6 +46,8 @@ use super::{
 use crate::error::{DataFusionError, Result};
 
 use super::{ExecutionPlan, Partitioning, RecordBatchStream, SendableRecordBatchStream};
+use crate::physical_plan::coalesce_batches::concat_batches;
+use crate::physical_plan::memory::MemoryExec;
 use ahash::RandomState;
 
 // An index of (batch, row) uniquely identifying a row in a part.
@@ -163,6 +165,19 @@ impl ExecutionPlan for HashJoinExec {
                     // merge all left parts into a single stream
                     let merge = MergeExec::new(self.left.clone());
                     let stream = merge.execute(0).await?;
+                    let schema = stream.schema().clone();
+
+                    let batches: Vec<RecordBatch> = stream.try_collect().await?;
+
+                    // we coalesce the build-side batches to avoid n*n cost when combining left
+                    // with each right batch
+
+                    //TODO this is over-simplistic - we need to make sure we don't exceed max batch sizes
+                    println!("concatenated {} batches", batches.len());
+                    let single_batch = concat_batches(&schema, &batches, 32768)?;
+                    let batches = vec![single_batch];
+                    let exec = MemoryExec::try_new(&vec![batches], schema, None)?;
+                    let stream = exec.execute(0).await?;
 
                     let on_left = self
                         .on
