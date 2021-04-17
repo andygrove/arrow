@@ -144,7 +144,9 @@ impl DistributedPlanner {
                 Arc::new(CoalesceBatches::new()),
                 Arc::new(AddMergeExec::new()),
             ];
-            let config = ExecutionConfig::new().with_physical_optimizer_rules(rules);
+            let config = ExecutionConfig::new()
+                .with_repartition_joins(false)
+                .with_physical_optimizer_rules(rules);
             let ctx = ExecutionContext::with_config(config);
             Ok((ctx.create_physical_plan(&adapter.logical_plan)?, stages))
         } else if let Some(merge) = execution_plan.as_any().downcast_ref::<MergeExec>() {

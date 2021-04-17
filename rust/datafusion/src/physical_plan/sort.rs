@@ -19,7 +19,7 @@
 
 use std::any::Any;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
 use futures::stream::Stream;
@@ -37,7 +37,9 @@ use arrow::{array::ArrayRef, error::ArrowError};
 use super::{RecordBatchStream, SendableRecordBatchStream};
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::expressions::PhysicalSortExpr;
-use crate::physical_plan::{common, Distribution, ExecutionPlan, Partitioning};
+use crate::physical_plan::{
+    common, Distribution, ExecutionPlan, MetricType, Partitioning, SQLMetric,
+};
 
 use async_trait::async_trait;
 
@@ -48,6 +50,8 @@ pub struct SortExec {
     input: Arc<dyn ExecutionPlan>,
     /// Sort expressions
     expr: Vec<PhysicalSortExpr>,
+    /// Output rows
+    output_rows: Arc<Mutex<SQLMetric>>,
 }
 
 impl SortExec {
@@ -56,7 +60,14 @@ impl SortExec {
         expr: Vec<PhysicalSortExpr>,
         input: Arc<dyn ExecutionPlan>,
     ) -> Result<Self> {
-        Ok(Self { expr, input })
+        Ok(Self {
+            expr,
+            input,
+            output_rows: Arc::new(Mutex::new(SQLMetric::new(
+                "outputRows",
+                MetricType::Counter,
+            ))),
+        })
     }
 
     /// Input schema
@@ -125,7 +136,11 @@ impl ExecutionPlan for SortExec {
         }
         let input = self.input.execute(0).await?;
 
-        Ok(Box::pin(SortStream::new(input, self.expr.clone())))
+        Ok(Box::pin(SortStream::new(
+            input,
+            self.expr.clone(),
+            self.output_rows.clone(),
+        )))
     }
 }
 
@@ -194,11 +209,16 @@ pin_project! {
         output: futures::channel::oneshot::Receiver<ArrowResult<Option<RecordBatch>>>,
         finished: bool,
         schema: SchemaRef,
+        output_rows: Arc<Mutex<SQLMetric>>
     }
 }
 
 impl SortStream {
-    fn new(input: SendableRecordBatchStream, expr: Vec<PhysicalSortExpr>) -> Self {
+    fn new(
+        input: SendableRecordBatchStream,
+        expr: Vec<PhysicalSortExpr>,
+        output_rows: Arc<Mutex<SQLMetric>>,
+    ) -> Self {
         let (tx, rx) = futures::channel::oneshot::channel();
 
         let schema = input.schema();
@@ -216,6 +236,7 @@ impl SortStream {
             output: rx,
             finished: false,
             schema,
+            output_rows,
         }
     }
 }
@@ -224,6 +245,8 @@ impl Stream for SortStream {
     type Item = ArrowResult<RecordBatch>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let output_rows = self.output_rows.clone();
+
         if self.finished {
             return Poll::Ready(None);
         }
@@ -241,6 +264,12 @@ impl Stream for SortStream {
                     Err(e) => Some(Err(ArrowError::ExternalError(Box::new(e)))), // error receiving
                     Ok(result) => result.transpose(),
                 };
+
+                if let Some(Ok(batch)) = &result {
+                    let mut output_rows = output_rows.lock().unwrap();
+                    output_rows.add(batch.num_rows());
+                }
+
                 Poll::Ready(result)
             }
             Poll::Pending => Poll::Pending,
