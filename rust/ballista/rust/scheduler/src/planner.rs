@@ -231,12 +231,11 @@ fn execute(
     Box::pin(async move {
         let mut partition_locations: HashMap<usize, Vec<PartitionLocation>> =
             HashMap::new();
-        let mut result_partition_locations = vec![];
         for stage in &stages {
             debug!("execute() {}", &format!("{:?}", stage)[0..60]);
             let stage = remove_unresolved_shuffles(stage.as_ref(), &partition_locations)?;
             let stage = stage.as_any().downcast_ref::<QueryStageExec>().unwrap();
-            result_partition_locations = execute_query_stage(
+            let result_partition_locations = execute_query_stage(
                 &stage.job_id.clone(),
                 stage.stage_id,
                 stage.children()[0].clone(),
@@ -247,11 +246,13 @@ fn execute(
                 .insert(stage.stage_id, result_partition_locations.clone());
         }
 
-        let x = stages.last().unwrap();
+        // read the partitions from the final stage
+        let final_stage = stages.last().unwrap();
+        let result_partitions = partition_locations.get(&final_stage.stage_id);
         let shuffle_reader: Arc<dyn ExecutionPlan> =
             Arc::new(ShuffleReaderExec::try_new(
-                x.,
-                x.schema(),
+                result_partitions.unwrap().to_vec(),
+                final_stage.schema(),
             )?);
         Ok(shuffle_reader)
     })
