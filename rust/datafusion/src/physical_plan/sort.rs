@@ -73,7 +73,7 @@ impl SortExec {
             ))),
             sort_time: Arc::new(Mutex::new(SQLMetric::new(
                 "sortTime",
-                MetricType::TimeMillis,
+                MetricType::TimeNanos,
             ))),
         })
     }
@@ -255,7 +255,7 @@ impl SortStream {
                     let now = Instant::now();
                     let result = sort_batches(&batches, &schema, &expr);
                     let mut sort_time = sort_time.lock().unwrap();
-                    sort_time.add(now.elapsed().as_millis() as usize);
+                    sort_time.add(now.elapsed().as_nanos() as usize);
                     result
                 });
 

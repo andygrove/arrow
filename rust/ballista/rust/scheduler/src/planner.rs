@@ -247,10 +247,11 @@ fn execute(
                 .insert(stage.stage_id, result_partition_locations.clone());
         }
 
+        let x = stages.last().unwrap();
         let shuffle_reader: Arc<dyn ExecutionPlan> =
             Arc::new(ShuffleReaderExec::try_new(
-                result_partition_locations,
-                stages.last().unwrap().schema(),
+                x.,
+                x.schema(),
             )?);
         Ok(shuffle_reader)
     })
