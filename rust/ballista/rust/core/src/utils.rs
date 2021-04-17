@@ -163,7 +163,7 @@ pub fn format_plan(plan: &dyn ExecutionPlan, indent: usize) -> Result<String> {
     let metrics_str = plan
         .metrics()
         .values()
-        .map(|m| format!("{:?}", m))
+        .map(|m| format!("{}={}", m.name(), m.value()))
         .collect::<Vec<String>>()
         .join(",");
 

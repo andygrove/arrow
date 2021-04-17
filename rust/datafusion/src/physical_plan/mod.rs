@@ -52,6 +52,8 @@ pub type SendableRecordBatchStream = Pin<Box<dyn RecordBatchStream + Send + Sync
 pub enum MetricType {
     /// Simple counter
     Counter,
+    /// Time in milliseconds
+    TimeMillis,
 }
 
 /// SQL metric such as counter (number of input or output rows) or timing information about
@@ -79,6 +81,16 @@ impl SQLMetric {
     /// Add to the value
     pub fn add(&mut self, n: usize) {
         self.value += n;
+    }
+
+    /// Get the metric name
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Get the metric type
+    pub fn metric_type(&self) -> &MetricType {
+        &self.metric_type
     }
 
     /// Get the current value

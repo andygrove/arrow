@@ -649,7 +649,7 @@ impl ExecutionConfig {
             default_schema: "public".to_owned(),
             create_default_catalog_and_schema: true,
             information_schema: false,
-            repartition_joins: true,
+            repartition_joins: false,
         }
     }
 

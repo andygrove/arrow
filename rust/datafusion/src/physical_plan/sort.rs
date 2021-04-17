@@ -42,6 +42,8 @@ use crate::physical_plan::{
 };
 
 use async_trait::async_trait;
+use hashbrown::HashMap;
+use std::time::Instant;
 
 /// Sort execution plan
 #[derive(Debug)]
@@ -52,6 +54,8 @@ pub struct SortExec {
     expr: Vec<PhysicalSortExpr>,
     /// Output rows
     output_rows: Arc<Mutex<SQLMetric>>,
+    /// Time to sort batches
+    sort_time: Arc<Mutex<SQLMetric>>,
 }
 
 impl SortExec {
@@ -66,6 +70,10 @@ impl SortExec {
             output_rows: Arc::new(Mutex::new(SQLMetric::new(
                 "outputRows",
                 MetricType::Counter,
+            ))),
+            sort_time: Arc::new(Mutex::new(SQLMetric::new(
+                "sortTime",
+                MetricType::TimeMillis,
             ))),
         })
     }
@@ -140,8 +148,23 @@ impl ExecutionPlan for SortExec {
             input,
             self.expr.clone(),
             self.output_rows.clone(),
+            self.sort_time.clone(),
         )))
     }
+
+    fn metrics(&self) -> HashMap<String, SQLMetric> {
+        let mut metrics = HashMap::new();
+        metrics.insert(
+            "outputRows".to_owned(),
+            self.output_rows.lock().unwrap().clone(),
+        );
+        metrics.insert(
+            "sortTime".to_owned(),
+            self.sort_time.lock().unwrap().clone(),
+        );
+        metrics
+    }
+
 }
 
 fn sort_batches(
@@ -209,7 +232,7 @@ pin_project! {
         output: futures::channel::oneshot::Receiver<ArrowResult<Option<RecordBatch>>>,
         finished: bool,
         schema: SchemaRef,
-        output_rows: Arc<Mutex<SQLMetric>>
+        output_rows: Arc<Mutex<SQLMetric>>,
     }
 }
 
@@ -218,6 +241,7 @@ impl SortStream {
         input: SendableRecordBatchStream,
         expr: Vec<PhysicalSortExpr>,
         output_rows: Arc<Mutex<SQLMetric>>,
+        sort_time: Arc<Mutex<SQLMetric>>,
     ) -> Self {
         let (tx, rx) = futures::channel::oneshot::channel();
 
@@ -227,7 +251,13 @@ impl SortStream {
             let sorted_batch = common::collect(input)
                 .await
                 .map_err(DataFusionError::into_arrow_external_error)
-                .and_then(move |batches| sort_batches(&batches, &schema, &expr));
+                .and_then(move |batches| {
+                    let now = Instant::now();
+                    let result = sort_batches(&batches, &schema, &expr);
+                    let mut sort_time = sort_time.lock().unwrap();
+                    sort_time.add(now.elapsed().as_millis() as usize);
+                    result
+                });
 
             tx.send(sorted_batch)
         });

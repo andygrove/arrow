@@ -145,6 +145,7 @@ impl DistributedPlanner {
                 Arc::new(AddMergeExec::new()),
             ];
             let config = ExecutionConfig::new()
+                .with_concurrency(1)
                 .with_repartition_joins(false)
                 .with_physical_optimizer_rules(rules);
             let ctx = ExecutionContext::with_config(config);
